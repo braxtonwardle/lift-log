@@ -148,7 +148,7 @@
   }
   function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 
-  let workouts = loadJSON(WORKOUTS_KEY, []);   // [{id, name, exercises:[{id, name, sets}]}]
+  let workouts = loadJSON(WORKOUTS_KEY, []);   // [{id, name, exercises:[{id, name, sets, targetReps}]}]
   let history = loadJSON(HISTORY_KEY, {});     // { "name": {sets:[{weight,reps}], grade, date} }
   let sessions = loadJSON(SESSIONS_KEY, []);   // [{id, date, workoutId, workoutName, exercises:[...]}]
   let draft = loadJSON(DRAFT_KEY, null);       // in-progress session, or null
@@ -281,7 +281,7 @@
       const w = workouts.find(x => x.id === workoutId);
       builderState = { id: w.id, name: w.name, exercises: w.exercises.map(ex => ({ ...ex })) };
     } else {
-      builderState = { id: null, name: "", exercises: [{ id: uid(), name: "", sets: 3 }] };
+      builderState = { id: null, name: "", exercises: [{ id: uid(), name: "", sets: 3, targetReps: "" }] };
     }
     view = "builder";
     render();
@@ -317,6 +317,10 @@
               <span class="mini-label">Sets</span>
               <input class="num-input sets-input" type="number" min="1" max="10" value="${ex.sets}" data-field="sets">
             </div>
+            <div class="sets-field">
+              <span class="mini-label">Reps</span>
+              <input class="num-input sets-input" type="number" min="0" max="50" placeholder="—" value="${ex.targetReps === undefined || ex.targetReps === null ? "" : ex.targetReps}" data-field="targetReps">
+            </div>
           </div>
           <div class="builder-row-bottom" style="justify-content:flex-end;">
             <button class="remove-row-btn" data-remove="${i}">remove</button>
@@ -337,6 +341,7 @@
         input.addEventListener("input", () => {
           const field = input.getAttribute("data-field");
           if (field === "sets") builderState.exercises[idx].sets = Math.max(1, Math.min(10, Number(input.value) || 1));
+          else if (field === "targetReps") builderState.exercises[idx].targetReps = input.value === "" ? "" : Math.max(0, Math.min(50, Number(input.value) || 0));
           else builderState.exercises[idx].name = input.value;
         });
       });
@@ -349,7 +354,7 @@
       });
     });
     document.getElementById("addExBtn").addEventListener("click", () => {
-      builderState.exercises.push({ id: uid(), name: "", sets: 3 });
+      builderState.exercises.push({ id: uid(), name: "", sets: 3, targetReps: "" });
       render();
     });
     document.getElementById("saveWorkoutBtn").addEventListener("click", saveWorkout);
@@ -385,12 +390,14 @@
       workoutName: w.name,
       exercises: w.exercises.map(ex => {
         const h = history[normName(ex.name)];
+        const hasTarget = ex.targetReps !== undefined && ex.targetReps !== null && ex.targetReps !== "";
         return {
           name: ex.name,
+          targetReps: ex.targetReps,
           grade: null,
           sets: Array.from({ length: ex.sets }, (_, i) => ({
             weight: h && h.sets[i] ? String(h.sets[i].weight) : "",
-            reps: h && h.sets[i] ? String(h.sets[i].reps) : "",
+            reps: hasTarget ? String(ex.targetReps) : (h && h.sets[i] ? String(h.sets[i].reps) : ""),
           })),
         };
       }),
@@ -470,7 +477,9 @@
       });
       const addSetBtn = card.querySelector("[data-add-set]");
       if (addSetBtn) addSetBtn.addEventListener("click", () => {
-        draft.exercises[i].sets.push({ weight: "", reps: "" });
+        const tr = draft.exercises[i].targetReps;
+        const hasTarget = tr !== undefined && tr !== null && tr !== "";
+        draft.exercises[i].sets.push({ weight: "", reps: hasTarget ? String(tr) : "" });
         saveDraft();
         render();
       });
