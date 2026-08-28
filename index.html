@@ -77,8 +77,6 @@
   .sets-field { flex: none; width: 64px; }
   .mini-label { color: var(--muted2); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; display: block; }
   .sets-input { width: 64px; flex: none; text-align: center; }
-  .role-check { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-  .role-check input { width: 14px; height: 14px; accent-color: var(--gold); }
   .remove-row-btn {
     border: none; background: transparent; color: var(--muted2); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;
   }
@@ -94,13 +92,6 @@
 
   .ex-card { background: var(--panel); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
   .ex-name { color: var(--ink); font-size: 14.5px; font-weight: 700; margin-bottom: 8px; }
-
-  .role-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
-  .role-btn {
-    flex: 1; padding: 7px 8px; border-radius: 7px; border: 1px solid var(--line2);
-    background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; font-family: inherit;
-  }
-  .role-btn.active { background: #182A4A; color: var(--ink); border-color: var(--gold); }
 
   .last-note { color: var(--muted2); font-size: 11.5px; line-height: 1.4; margin-bottom: 10px; }
 
@@ -157,8 +148,8 @@
   }
   function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 
-  let workouts = loadJSON(WORKOUTS_KEY, []);   // [{id, name, exercises:[{id, name, sets, roleTracked}]}]
-  let history = loadJSON(HISTORY_KEY, {});     // { "name|role": {sets:[{weight,reps}], grade, date} }
+  let workouts = loadJSON(WORKOUTS_KEY, []);   // [{id, name, exercises:[{id, name, sets}]}]
+  let history = loadJSON(HISTORY_KEY, {});     // { "name": {sets:[{weight,reps}], grade, date} }
   let sessions = loadJSON(SESSIONS_KEY, []);   // [{id, date, workoutId, workoutName, exercises:[...]}]
   let draft = loadJSON(DRAFT_KEY, null);       // in-progress session, or null
 
@@ -168,15 +159,35 @@
     return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
   }
   function normName(n) { return String(n || "").trim().toLowerCase().replace(/\s+/g, " "); }
-  function histKey(name, role) { return normName(name) + "|" + (role || "none"); }
   function escapeHTML(str) {
     return String(str).replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[s]));
   }
   const GRADE_LABELS = { 1: "Increase", 2: "Same", 3: "Decrease" };
 
+  // ---------- one-time migration: drop the primary/secondary role split ----------
+  // History used to be keyed "name|role" so a lift could have separate last-time
+  // numbers per role. Role tracking was removed in favor of one history entry
+  // per exercise. For any exercise that had multiple role variants, the most
+  // recent one (by date) wins; older ones are discarded rather than merged,
+  // since averaging weights/reps across roles wouldn't mean anything.
+  function migrateHistoryRoles() {
+    let changed = false;
+    const merged = {};
+    Object.keys(history).forEach(key => {
+      const sep = key.lastIndexOf("|");
+      if (sep === -1) { merged[key] = history[key]; return; }
+      changed = true;
+      const name = key.slice(0, sep);
+      const entry = history[key];
+      if (!merged[name] || (entry.date || "") > (merged[name].date || "")) merged[name] = entry;
+    });
+    if (changed) { history = merged; saveJSON(HISTORY_KEY, history); }
+  }
+  migrateHistoryRoles();
+
   // ---------- state ----------
   let view = draft ? "session" : "home"; // "home" | "builder" | "session"
-  let builderState = null; // { id (or null for new), name, exercises:[{id,name,sets,roleTracked}] }
+  let builderState = null; // { id (or null for new), name, exercises:[{id,name,sets}] }
 
   // ---------- rendering ----------
   const app = document.getElementById("app");
@@ -270,7 +281,7 @@
       const w = workouts.find(x => x.id === workoutId);
       builderState = { id: w.id, name: w.name, exercises: w.exercises.map(ex => ({ ...ex })) };
     } else {
-      builderState = { id: null, name: "", exercises: [{ id: uid(), name: "", sets: 3, roleTracked: false }] };
+      builderState = { id: null, name: "", exercises: [{ id: uid(), name: "", sets: 3 }] };
     }
     view = "builder";
     render();
@@ -279,7 +290,7 @@
   function knownExerciseNames() {
     const names = new Set();
     workouts.forEach(w => w.exercises.forEach(ex => { if (ex.name) names.add(ex.name); }));
-    Object.keys(history).forEach(k => { const n = k.split("|")[0]; if (n) names.add(n); });
+    Object.keys(history).forEach(n => { if (n) names.add(n); });
     return Array.from(names);
   }
 
@@ -307,8 +318,7 @@
               <input class="num-input sets-input" type="number" min="1" max="10" value="${ex.sets}" data-field="sets">
             </div>
           </div>
-          <div class="builder-row-bottom">
-            <label class="role-check"><input type="checkbox" data-field="roleTracked" ${ex.roleTracked ? "checked" : ""}> Track primary/secondary</label>
+          <div class="builder-row-bottom" style="justify-content:flex-end;">
             <button class="remove-row-btn" data-remove="${i}">remove</button>
           </div>
         </div>
@@ -326,8 +336,7 @@
       row.querySelectorAll("[data-field]").forEach(input => {
         input.addEventListener("input", () => {
           const field = input.getAttribute("data-field");
-          if (field === "roleTracked") builderState.exercises[idx].roleTracked = input.checked;
-          else if (field === "sets") builderState.exercises[idx].sets = Math.max(1, Math.min(10, Number(input.value) || 1));
+          if (field === "sets") builderState.exercises[idx].sets = Math.max(1, Math.min(10, Number(input.value) || 1));
           else builderState.exercises[idx].name = input.value;
         });
       });
@@ -340,7 +349,7 @@
       });
     });
     document.getElementById("addExBtn").addEventListener("click", () => {
-      builderState.exercises.push({ id: uid(), name: "", sets: 3, roleTracked: false });
+      builderState.exercises.push({ id: uid(), name: "", sets: 3 });
       render();
     });
     document.getElementById("saveWorkoutBtn").addEventListener("click", saveWorkout);
@@ -375,12 +384,9 @@
       workoutId: w.id,
       workoutName: w.name,
       exercises: w.exercises.map(ex => {
-        const role = ex.roleTracked ? "primary" : "none";
-        const h = history[histKey(ex.name, role)];
+        const h = history[normName(ex.name)];
         return {
           name: ex.name,
-          roleTracked: ex.roleTracked,
-          role,
           grade: null,
           sets: Array.from({ length: ex.sets }, (_, i) => ({
             weight: h && h.sets[i] ? String(h.sets[i].weight) : "",
@@ -396,11 +402,11 @@
 
   function saveDraft() { saveJSON(DRAFT_KEY, draft); }
 
-  function lastNoteFor(name, role) {
-    const h = history[histKey(name, role)];
-    if (!h || !h.sets || h.sets.length === 0) return "No history yet for this exercise" + (role !== "none" ? " (" + role + ")" : "") + ".";
+  function lastNoteFor(name) {
+    const h = history[normName(name)];
+    if (!h || !h.sets || h.sets.length === 0) return "No history yet for this exercise.";
     const setsStr = h.sets.filter(s => s.weight !== "" && s.reps !== "").map(s => `${s.weight}×${s.reps}`).join(", ");
-    let str = "Last time" + (role !== "none" ? " (" + role.charAt(0).toUpperCase() + role.slice(1) + ")" : "") + ": " + (setsStr || "—") + " on " + h.date;
+    let str = "Last time: " + (setsStr || "—") + " on " + h.date;
     if (h.grade) str += " — graded: " + GRADE_LABELS[h.grade];
     return str;
   }
@@ -414,15 +420,7 @@
     `;
     draft.exercises.forEach((ex, i) => {
       html += `<div class="ex-card" data-exidx="${i}"><div class="ex-name">${escapeHTML(ex.name)}</div>`;
-      if (ex.roleTracked) {
-        html += `
-          <div class="role-toggle">
-            <button class="role-btn ${ex.role === "primary" ? "active" : ""}" data-role="primary">Primary</button>
-            <button class="role-btn ${ex.role === "secondary" ? "active" : ""}" data-role="secondary">Secondary</button>
-          </div>
-        `;
-      }
-      html += `<div class="last-note">${escapeHTML(lastNoteFor(ex.name, ex.role))}</div>`;
+      html += `<div class="last-note">${escapeHTML(lastNoteFor(ex.name))}</div>`;
       ex.sets.forEach((s, j) => {
         html += `
           <div class="set-row">
@@ -435,15 +433,13 @@
         `;
       });
       html += `<div class="set-actions"><button class="small-btn-ghost" data-add-set="1">+ Add set</button></div>`;
-      if (ex.roleTracked && ex.role === "primary") {
-        html += `
-          <div class="grade-row">
-            <button class="grade-btn ${ex.grade === 1 ? "active" : ""}" data-grade="1">↑ Increase<br>next time</button>
-            <button class="grade-btn ${ex.grade === 2 ? "active" : ""}" data-grade="2">= Keep<br>same</button>
-            <button class="grade-btn ${ex.grade === 3 ? "active" : ""}" data-grade="3">↓ Decrease<br>next time</button>
-          </div>
-        `;
-      }
+      html += `
+        <div class="grade-row">
+          <button class="grade-btn ${ex.grade === 1 ? "active" : ""}" data-grade="1">↑ Increase<br>next time</button>
+          <button class="grade-btn ${ex.grade === 2 ? "active" : ""}" data-grade="2">= Keep<br>same</button>
+          <button class="grade-btn ${ex.grade === 3 ? "active" : ""}" data-grade="3">↓ Decrease<br>next time</button>
+        </div>
+      `;
       html += `</div>`;
     });
     html += `<button class="primary-btn" id="finishBtn">Finish workout</button>`;
@@ -456,18 +452,6 @@
 
     app.querySelectorAll(".ex-card").forEach(card => {
       const i = Number(card.getAttribute("data-exidx"));
-      card.querySelectorAll("[data-role]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          draft.exercises[i].role = btn.getAttribute("data-role");
-          const h = history[histKey(draft.exercises[i].name, draft.exercises[i].role)];
-          draft.exercises[i].sets = draft.exercises[i].sets.map((s, j) => ({
-            weight: h && h.sets[j] ? String(h.sets[j].weight) : "",
-            reps: h && h.sets[j] ? String(h.sets[j].reps) : "",
-          }));
-          saveDraft();
-          render();
-        });
-      });
       card.querySelectorAll("[data-set-field]").forEach(input => {
         input.addEventListener("input", () => {
           const j = Number(input.getAttribute("data-setidx"));
@@ -508,27 +492,28 @@
 
   function finishWorkout() {
     const date = todayKey();
+    const loggedExercises = [];
     draft.exercises.forEach(ex => {
       const sets = ex.sets.filter(s => s.weight !== "" || s.reps !== "").map(s => ({
         weight: s.weight === "" ? "" : Number(s.weight),
         reps: s.reps === "" ? "" : Number(s.reps),
       }));
-      if (sets.length === 0) return;
-      history[histKey(ex.name, ex.role)] = { sets, grade: ex.grade, date };
+      if (sets.length === 0) return; // left blank (e.g. skipped this time) — don't touch history
+      history[normName(ex.name)] = { sets, grade: ex.grade, date };
+      loggedExercises.push({ name: ex.name, grade: ex.grade, sets });
     });
     saveJSON(HISTORY_KEY, history);
 
-    sessions.push({
-      id: uid(),
-      date,
-      workoutId: draft.workoutId,
-      workoutName: draft.workoutName,
-      exercises: draft.exercises.map(ex => ({
-        name: ex.name, role: ex.role, grade: ex.grade,
-        sets: ex.sets.filter(s => s.weight !== "" || s.reps !== ""),
-      })),
-    });
-    saveJSON(SESSIONS_KEY, sessions);
+    if (loggedExercises.length > 0) {
+      sessions.push({
+        id: uid(),
+        date,
+        workoutId: draft.workoutId,
+        workoutName: draft.workoutName,
+        exercises: loggedExercises,
+      });
+      saveJSON(SESSIONS_KEY, sessions);
+    }
 
     draft = null;
     localStorage.removeItem(DRAFT_KEY);
@@ -538,11 +523,11 @@
 
   // ---------- export / backup ----------
   function exportCSV() {
-    const rows = [["date", "workout", "exercise", "role", "set", "weight", "reps", "grade"]];
+    const rows = [["date", "workout", "exercise", "set", "weight", "reps", "grade"]];
     sessions.forEach(s => {
       s.exercises.forEach(ex => {
         ex.sets.forEach((set, i) => {
-          rows.push([s.date, s.workoutName, ex.name, ex.role, i + 1, set.weight, set.reps, ex.grade || ""]);
+          rows.push([s.date, s.workoutName, ex.name, i + 1, set.weight, set.reps, ex.grade || ""]);
         });
       });
     });
