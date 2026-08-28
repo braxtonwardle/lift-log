@@ -1,0 +1,585 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-title" content="Lift Log" />
+<meta name="theme-color" content="#0F1A2E" />
+<title>Lift Log</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8F%8B%EF%B8%8F%3C/text%3E%3C/svg%3E" />
+<style>
+  :root {
+    --bg: #0F1A2E;
+    --panel: #13203A;
+    --line: #1E2C4A;
+    --line2: #2C3A57;
+    --ink: #F2EFE6;
+    --muted: #8FA0C4;
+    --muted2: #6E80A8;
+    --gold: #D4A24C;
+    --olive: #7A8C4C;
+    --red: #B5544A;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    min-height: 100vh;
+    padding: env(safe-area-inset-top, 24px) 16px calc(env(safe-area-inset-bottom, 24px) + 24px);
+  }
+  .wrap { width: 100%; max-width: 420px; margin: 0 auto; padding-top: 8px; }
+
+  .app-header { margin-bottom: 18px; }
+  .app-title { color: var(--gold); font-size: 20px; font-weight: 700; margin: 0; font-family: 'Georgia', 'Iowan Old Style', ui-serif, serif; }
+  .app-sub { color: var(--muted2); font-size: 12px; margin-top: 3px; }
+
+  .nav-row { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .nav-btn {
+    width: 32px; height: 32px; border-radius: 8px; flex: none;
+    border: 1px solid var(--line2); background: transparent; color: var(--gold);
+    font-size: 18px; cursor: pointer; line-height: 1;
+  }
+  .nav-title { color: var(--ink); font-size: 15.5px; font-weight: 600; flex: 1; }
+
+  .panel { background: var(--panel); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
+
+  .workout-card {
+    background: var(--panel); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; border: none; width: 100%; text-align: left; font-family: inherit;
+  }
+  .wc-name { color: var(--ink); font-size: 15px; font-weight: 600; }
+  .wc-meta { color: var(--muted2); font-size: 11.5px; margin-top: 3px; }
+  .wc-actions { display: flex; gap: 6px; flex: none; }
+  .icon-btn {
+    width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line2);
+    background: transparent; color: var(--muted); font-size: 13px; cursor: pointer;
+  }
+
+  .add-btn {
+    width: 100%; padding: 12px; border-radius: 10px; border: 1.5px dashed var(--line2);
+    background: transparent; color: var(--gold); font-size: 13.5px; cursor: pointer; font-family: inherit; margin-top: 4px;
+  }
+
+  .field-label { color: var(--muted2); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; display: block; }
+  .text-input, .num-input {
+    width: 100%; background: var(--bg); border: 1px solid var(--line2); border-radius: 8px;
+    padding: 9px 10px; color: var(--ink); font-size: 14px; font-family: inherit;
+  }
+
+  .builder-row { background: var(--panel); border-radius: 10px; padding: 12px; margin-bottom: 8px; }
+  .builder-row-top { display: flex; gap: 8px; margin-bottom: 8px; }
+  .builder-row-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .sets-input { width: 64px; flex: none; }
+  .role-check { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
+  .role-check input { width: 14px; height: 14px; accent-color: var(--gold); }
+  .remove-row-btn {
+    border: none; background: transparent; color: var(--muted2); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;
+  }
+
+  .primary-btn {
+    width: 100%; padding: 12px; border-radius: 10px; border: none;
+    background: var(--gold); color: #16213E; font-size: 14px; font-weight: 700; cursor: pointer; font-family: inherit;
+  }
+  .ghost-btn {
+    width: 100%; padding: 11px; border-radius: 10px; border: 1px solid var(--line2);
+    background: transparent; color: var(--muted2); font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 8px;
+  }
+
+  .ex-card { background: var(--panel); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+  .ex-name { color: var(--ink); font-size: 14.5px; font-weight: 700; margin-bottom: 8px; }
+
+  .role-toggle { display: flex; gap: 6px; margin-bottom: 10px; }
+  .role-btn {
+    flex: 1; padding: 7px 8px; border-radius: 7px; border: 1px solid var(--line2);
+    background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .role-btn.active { background: #182A4A; color: var(--ink); border-color: var(--gold); }
+
+  .last-note { color: var(--muted2); font-size: 11.5px; line-height: 1.4; margin-bottom: 10px; }
+
+  .set-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
+  .set-label { width: 42px; flex: none; color: var(--muted2); font-size: 12px; }
+  .set-row input[type="number"] {
+    flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line2); border-radius: 8px;
+    padding: 8px 9px; color: var(--ink); font-size: 14px; font-family: inherit;
+  }
+  .set-unit { color: var(--muted2); font-size: 11px; flex: none; width: 20px; }
+  .set-remove {
+    flex: none; width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line2);
+    background: transparent; color: var(--muted2); font-size: 13px; cursor: pointer; line-height: 1;
+  }
+
+  .set-actions { display: flex; margin-top: 4px; margin-bottom: 4px; }
+  .small-btn-ghost {
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
+    background: transparent; color: var(--muted2); border: 1px solid var(--line2);
+  }
+
+  .grade-row { display: flex; gap: 6px; margin-top: 10px; }
+  .grade-btn {
+    flex: 1; padding: 8px 4px; border-radius: 8px; border: 1px solid var(--line2);
+    background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; font-family: inherit; line-height: 1.3;
+  }
+  .grade-btn.active[data-grade="1"] { background: rgba(122,140,76,.25); color: var(--olive); border-color: var(--olive); }
+  .grade-btn.active[data-grade="2"] { background: rgba(212,162,76,.2); color: var(--gold); border-color: var(--gold); }
+  .grade-btn.active[data-grade="3"] { background: rgba(181,84,74,.25); color: var(--red); border-color: var(--red); }
+
+  .footer-actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+  .footer-btn {
+    background: transparent; color: var(--muted2); border: 1px solid var(--line2);
+    border-radius: 8px; padding: 8px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+  }
+  .tiny { color: var(--muted2); font-size: 11px; margin-top: 10px; line-height: 1.4; }
+  .empty-state { color: var(--muted2); font-size: 13px; text-align: center; padding: 28px 10px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+  // ---------- storage ----------
+  const WORKOUTS_KEY = "ll_workouts_v1";
+  const HISTORY_KEY = "ll_history_v1";
+  const SESSIONS_KEY = "ll_sessions_v1";
+  const DRAFT_KEY = "ll_draft_v1";
+  const LAST_BACKUP_KEY = "ll_lastBackupAt";
+
+  function loadJSON(key, fallback) {
+    try { const v = JSON.parse(localStorage.getItem(key)); return v === null || v === undefined ? fallback : v; }
+    catch (e) { return fallback; }
+  }
+  function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
+
+  let workouts = loadJSON(WORKOUTS_KEY, []);   // [{id, name, exercises:[{id, name, sets, roleTracked}]}]
+  let history = loadJSON(HISTORY_KEY, {});     // { "name|role": {sets:[{weight,reps}], grade, date} }
+  let sessions = loadJSON(SESSIONS_KEY, []);   // [{id, date, workoutId, workoutName, exercises:[...]}]
+  let draft = loadJSON(DRAFT_KEY, null);       // in-progress session, or null
+
+  function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
+  function todayKey() {
+    const d = new Date(); const off = d.getTimezoneOffset();
+    return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
+  }
+  function normName(n) { return String(n || "").trim().toLowerCase().replace(/\s+/g, " "); }
+  function histKey(name, role) { return normName(name) + "|" + (role || "none"); }
+  function escapeHTML(str) {
+    return String(str).replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[s]));
+  }
+  const GRADE_LABELS = { 1: "Increase", 2: "Same", 3: "Decrease" };
+
+  // ---------- state ----------
+  let view = draft ? "session" : "home"; // "home" | "builder" | "session"
+  let builderState = null; // { id (or null for new), name, exercises:[{id,name,sets,roleTracked}] }
+
+  // ---------- rendering ----------
+  const app = document.getElementById("app");
+  function render() {
+    if (view === "home") renderHome();
+    else if (view === "builder") renderBuilder();
+    else if (view === "session") renderSession();
+  }
+
+  function formatBackupStatus(iso) {
+    if (!iso) return "Never backed up — download one below.";
+    const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+    if (days <= 0) return "Backed up today.";
+    if (days === 1) return "Last backup: 1 day ago.";
+    return `Last backup: ${days} days ago.`;
+  }
+
+  function lastDoneLabel(workoutId) {
+    const matches = sessions.filter(s => s.workoutId === workoutId);
+    if (matches.length === 0) return "Not done yet";
+    const latest = matches.reduce((a, b) => (a.date > b.date ? a : b));
+    return "Last done " + latest.date;
+  }
+
+  // ---------- HOME ----------
+  function renderHome() {
+    let html = `
+      <div class="app-header">
+        <h1 class="app-title">Lift Log</h1>
+        <div class="app-sub">Pick a workout to start logging.</div>
+      </div>
+    `;
+    if (workouts.length === 0) {
+      html += `<div class="empty-state">No workouts yet.<br>Build one to get started.</div>`;
+    } else {
+      workouts.forEach(w => {
+        html += `
+          <div class="workout-card" data-start="${w.id}">
+            <div class="wc-main">
+              <div class="wc-name">${escapeHTML(w.name)}</div>
+              <div class="wc-meta">${w.exercises.length} exercise${w.exercises.length === 1 ? "" : "s"} · ${escapeHTML(lastDoneLabel(w.id))}</div>
+            </div>
+            <div class="wc-actions">
+              <button class="icon-btn" data-edit="${w.id}">✎</button>
+              <button class="icon-btn" data-del="${w.id}">🗑</button>
+            </div>
+          </div>
+        `;
+      });
+    }
+    html += `<button class="add-btn" id="newWorkoutBtn">+ New workout</button>`;
+    html += `
+      <div class="footer-actions">
+        <button class="footer-btn" id="exportBtn">Export CSV</button>
+        <button class="footer-btn" id="backupBtn">Download backup</button>
+        <button class="footer-btn" id="restoreBtn">Restore backup</button>
+        <input type="file" id="restoreInput" accept="application/json" style="display:none;">
+      </div>
+      <div class="tiny">Saves locally in this browser only. <span id="backupStatus">${formatBackupStatus(localStorage.getItem(LAST_BACKUP_KEY))}</span></div>
+    `;
+    app.innerHTML = html;
+
+    app.querySelectorAll("[data-start]").forEach(el => {
+      el.querySelector(".wc-main")?.addEventListener("click", () => startSession(el.getAttribute("data-start")));
+    });
+    app.querySelectorAll("[data-edit]").forEach(el => {
+      el.addEventListener("click", (e) => { e.stopPropagation(); openBuilder(el.getAttribute("data-edit")); });
+    });
+    app.querySelectorAll("[data-del]").forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const id = el.getAttribute("data-del");
+        const w = workouts.find(x => x.id === id);
+        if (w && confirm(`Delete "${w.name}"? This won't delete its logged history.`)) {
+          workouts = workouts.filter(x => x.id !== id);
+          saveJSON(WORKOUTS_KEY, workouts);
+          render();
+        }
+      });
+    });
+    document.getElementById("newWorkoutBtn").addEventListener("click", () => openBuilder(null));
+    document.getElementById("exportBtn").addEventListener("click", exportCSV);
+    document.getElementById("backupBtn").addEventListener("click", downloadBackup);
+    document.getElementById("restoreBtn").addEventListener("click", () => document.getElementById("restoreInput").click());
+    document.getElementById("restoreInput").addEventListener("change", restoreBackup);
+  }
+
+  // ---------- BUILDER ----------
+  function openBuilder(workoutId) {
+    if (workoutId) {
+      const w = workouts.find(x => x.id === workoutId);
+      builderState = { id: w.id, name: w.name, exercises: w.exercises.map(ex => ({ ...ex })) };
+    } else {
+      builderState = { id: null, name: "", exercises: [{ id: uid(), name: "", sets: 3, roleTracked: false }] };
+    }
+    view = "builder";
+    render();
+  }
+
+  function knownExerciseNames() {
+    const names = new Set();
+    workouts.forEach(w => w.exercises.forEach(ex => { if (ex.name) names.add(ex.name); }));
+    Object.keys(history).forEach(k => { const n = k.split("|")[0]; if (n) names.add(n); });
+    return Array.from(names);
+  }
+
+  function renderBuilder() {
+    const isEdit = !!builderState.id;
+    let html = `
+      <div class="nav-row">
+        <button class="nav-btn" id="backBtn">‹</button>
+        <div class="nav-title">${isEdit ? "Edit workout" : "New workout"}</div>
+      </div>
+      <span class="field-label">Workout name</span>
+      <input class="text-input" id="wName" type="text" placeholder="e.g. Workout A" value="${escapeHTML(builderState.name)}" style="margin-bottom:14px;">
+      <span class="field-label">Exercises</span>
+    `;
+    builderState.exercises.forEach((ex, i) => {
+      html += `
+        <div class="builder-row" data-idx="${i}">
+          <div class="builder-row-top">
+            <input class="text-input ex-name-input" list="exNames" type="text" placeholder="Exercise name" value="${escapeHTML(ex.name)}" data-field="name" style="flex:1;">
+            <input class="num-input sets-input" type="number" min="1" max="10" value="${ex.sets}" data-field="sets">
+          </div>
+          <div class="builder-row-bottom">
+            <label class="role-check"><input type="checkbox" data-field="roleTracked" ${ex.roleTracked ? "checked" : ""}> Track primary/secondary</label>
+            <button class="remove-row-btn" data-remove="${i}">remove</button>
+          </div>
+        </div>
+      `;
+    });
+    html += `<datalist id="exNames">${knownExerciseNames().map(n => `<option value="${escapeHTML(n)}">`).join("")}</datalist>`;
+    html += `<button class="ghost-btn" id="addExBtn">+ Add exercise</button>`;
+    html += `<button class="primary-btn" id="saveWorkoutBtn" style="margin-top:16px;">Save workout</button>`;
+    app.innerHTML = html;
+
+    document.getElementById("backBtn").addEventListener("click", () => { view = "home"; render(); });
+    document.getElementById("wName").addEventListener("input", (e) => { builderState.name = e.target.value; });
+    app.querySelectorAll(".builder-row").forEach(row => {
+      const idx = Number(row.getAttribute("data-idx"));
+      row.querySelectorAll("[data-field]").forEach(input => {
+        input.addEventListener("input", () => {
+          const field = input.getAttribute("data-field");
+          if (field === "roleTracked") builderState.exercises[idx].roleTracked = input.checked;
+          else if (field === "sets") builderState.exercises[idx].sets = Math.max(1, Math.min(10, Number(input.value) || 1));
+          else builderState.exercises[idx].name = input.value;
+        });
+      });
+    });
+    app.querySelectorAll("[data-remove]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.getAttribute("data-remove"));
+        builderState.exercises.splice(idx, 1);
+        render();
+      });
+    });
+    document.getElementById("addExBtn").addEventListener("click", () => {
+      builderState.exercises.push({ id: uid(), name: "", sets: 3, roleTracked: false });
+      render();
+    });
+    document.getElementById("saveWorkoutBtn").addEventListener("click", saveWorkout);
+  }
+
+  function saveWorkout() {
+    const name = builderState.name.trim();
+    const exercises = builderState.exercises
+      .map(ex => ({ ...ex, name: ex.name.trim() }))
+      .filter(ex => ex.name.length > 0);
+    if (!name) { alert("Give the workout a name."); return; }
+    if (exercises.length === 0) { alert("Add at least one exercise."); return; }
+
+    if (builderState.id) {
+      const w = workouts.find(x => x.id === builderState.id);
+      w.name = name;
+      w.exercises = exercises;
+    } else {
+      workouts.push({ id: uid(), name, exercises });
+    }
+    saveJSON(WORKOUTS_KEY, workouts);
+    builderState = null;
+    view = "home";
+    render();
+  }
+
+  // ---------- SESSION ----------
+  function startSession(workoutId) {
+    const w = workouts.find(x => x.id === workoutId);
+    if (!w) return;
+    draft = {
+      workoutId: w.id,
+      workoutName: w.name,
+      exercises: w.exercises.map(ex => {
+        const role = ex.roleTracked ? "primary" : "none";
+        const h = history[histKey(ex.name, role)];
+        return {
+          name: ex.name,
+          roleTracked: ex.roleTracked,
+          role,
+          grade: null,
+          sets: Array.from({ length: ex.sets }, (_, i) => ({
+            weight: h && h.sets[i] ? String(h.sets[i].weight) : "",
+            reps: h && h.sets[i] ? String(h.sets[i].reps) : "",
+          })),
+        };
+      }),
+    };
+    saveJSON(DRAFT_KEY, draft);
+    view = "session";
+    render();
+  }
+
+  function saveDraft() { saveJSON(DRAFT_KEY, draft); }
+
+  function lastNoteFor(name, role) {
+    const h = history[histKey(name, role)];
+    if (!h || !h.sets || h.sets.length === 0) return "No history yet for this exercise" + (role !== "none" ? " (" + role + ")" : "") + ".";
+    const setsStr = h.sets.filter(s => s.weight !== "" && s.reps !== "").map(s => `${s.weight}×${s.reps}`).join(", ");
+    let str = "Last time" + (role !== "none" ? " (" + role.charAt(0).toUpperCase() + role.slice(1) + ")" : "") + ": " + (setsStr || "—") + " on " + h.date;
+    if (h.grade) str += " — graded: " + GRADE_LABELS[h.grade];
+    return str;
+  }
+
+  function renderSession() {
+    let html = `
+      <div class="nav-row">
+        <button class="nav-btn" id="backBtn">‹</button>
+        <div class="nav-title">${escapeHTML(draft.workoutName)}</div>
+      </div>
+    `;
+    draft.exercises.forEach((ex, i) => {
+      html += `<div class="ex-card" data-exidx="${i}"><div class="ex-name">${escapeHTML(ex.name)}</div>`;
+      if (ex.roleTracked) {
+        html += `
+          <div class="role-toggle">
+            <button class="role-btn ${ex.role === "primary" ? "active" : ""}" data-role="primary">Primary</button>
+            <button class="role-btn ${ex.role === "secondary" ? "active" : ""}" data-role="secondary">Secondary</button>
+          </div>
+        `;
+      }
+      html += `<div class="last-note">${escapeHTML(lastNoteFor(ex.name, ex.role))}</div>`;
+      ex.sets.forEach((s, j) => {
+        html += `
+          <div class="set-row">
+            <span class="set-label">Set ${j + 1}</span>
+            <input type="number" inputmode="decimal" placeholder="wt" data-set-field="weight" data-setidx="${j}" value="${escapeHTML(s.weight)}">
+            <span class="set-unit">lb</span>
+            <input type="number" inputmode="numeric" placeholder="reps" data-set-field="reps" data-setidx="${j}" value="${escapeHTML(s.reps)}">
+            <button class="set-remove" data-remove-set="${j}">×</button>
+          </div>
+        `;
+      });
+      html += `<div class="set-actions"><button class="small-btn-ghost" data-add-set="1">+ Add set</button></div>`;
+      if (ex.roleTracked && ex.role === "primary") {
+        html += `
+          <div class="grade-row">
+            <button class="grade-btn ${ex.grade === 1 ? "active" : ""}" data-grade="1">↑ Increase<br>next time</button>
+            <button class="grade-btn ${ex.grade === 2 ? "active" : ""}" data-grade="2">= Keep<br>same</button>
+            <button class="grade-btn ${ex.grade === 3 ? "active" : ""}" data-grade="3">↓ Decrease<br>next time</button>
+          </div>
+        `;
+      }
+      html += `</div>`;
+    });
+    html += `<button class="primary-btn" id="finishBtn">Finish workout</button>`;
+    html += `<button class="ghost-btn" id="backHomeBtn">Save &amp; go back (resume later)</button>`;
+    app.innerHTML = html;
+
+    document.getElementById("backBtn").addEventListener("click", goHomeKeepDraft);
+    document.getElementById("backHomeBtn").addEventListener("click", goHomeKeepDraft);
+    document.getElementById("finishBtn").addEventListener("click", finishWorkout);
+
+    app.querySelectorAll(".ex-card").forEach(card => {
+      const i = Number(card.getAttribute("data-exidx"));
+      card.querySelectorAll("[data-role]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          draft.exercises[i].role = btn.getAttribute("data-role");
+          const h = history[histKey(draft.exercises[i].name, draft.exercises[i].role)];
+          draft.exercises[i].sets = draft.exercises[i].sets.map((s, j) => ({
+            weight: h && h.sets[j] ? String(h.sets[j].weight) : "",
+            reps: h && h.sets[j] ? String(h.sets[j].reps) : "",
+          }));
+          saveDraft();
+          render();
+        });
+      });
+      card.querySelectorAll("[data-set-field]").forEach(input => {
+        input.addEventListener("input", () => {
+          const j = Number(input.getAttribute("data-setidx"));
+          const field = input.getAttribute("data-set-field");
+          draft.exercises[i].sets[j][field] = input.value;
+          saveDraft();
+        });
+      });
+      card.querySelectorAll("[data-remove-set]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const j = Number(btn.getAttribute("data-remove-set"));
+          draft.exercises[i].sets.splice(j, 1);
+          saveDraft();
+          render();
+        });
+      });
+      const addSetBtn = card.querySelector("[data-add-set]");
+      if (addSetBtn) addSetBtn.addEventListener("click", () => {
+        draft.exercises[i].sets.push({ weight: "", reps: "" });
+        saveDraft();
+        render();
+      });
+      card.querySelectorAll("[data-grade]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const g = Number(btn.getAttribute("data-grade"));
+          draft.exercises[i].grade = draft.exercises[i].grade === g ? null : g;
+          saveDraft();
+          render();
+        });
+      });
+    });
+  }
+
+  function goHomeKeepDraft() {
+    view = "home";
+    render();
+  }
+
+  function finishWorkout() {
+    const date = todayKey();
+    draft.exercises.forEach(ex => {
+      const sets = ex.sets.filter(s => s.weight !== "" || s.reps !== "").map(s => ({
+        weight: s.weight === "" ? "" : Number(s.weight),
+        reps: s.reps === "" ? "" : Number(s.reps),
+      }));
+      if (sets.length === 0) return;
+      history[histKey(ex.name, ex.role)] = { sets, grade: ex.grade, date };
+    });
+    saveJSON(HISTORY_KEY, history);
+
+    sessions.push({
+      id: uid(),
+      date,
+      workoutId: draft.workoutId,
+      workoutName: draft.workoutName,
+      exercises: draft.exercises.map(ex => ({
+        name: ex.name, role: ex.role, grade: ex.grade,
+        sets: ex.sets.filter(s => s.weight !== "" || s.reps !== ""),
+      })),
+    });
+    saveJSON(SESSIONS_KEY, sessions);
+
+    draft = null;
+    localStorage.removeItem(DRAFT_KEY);
+    view = "home";
+    render();
+  }
+
+  // ---------- export / backup ----------
+  function exportCSV() {
+    const rows = [["date", "workout", "exercise", "role", "set", "weight", "reps", "grade"]];
+    sessions.forEach(s => {
+      s.exercises.forEach(ex => {
+        ex.sets.forEach((set, i) => {
+          rows.push([s.date, s.workoutName, ex.name, ex.role, i + 1, set.weight, set.reps, ex.grade || ""]);
+        });
+      });
+    });
+    const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "lift-log-export.csv";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadBackup() {
+    const data = { workouts, history, sessions, exportedAt: new Date().toISOString() };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = "lift-log-backup.json";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString());
+    render();
+  }
+
+  function restoreBackup(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result);
+        if (!confirm("This will replace all current data with the backup. Continue?")) return;
+        workouts = data.workouts || [];
+        history = data.history || {};
+        sessions = data.sessions || [];
+        saveJSON(WORKOUTS_KEY, workouts);
+        saveJSON(HISTORY_KEY, history);
+        saveJSON(SESSIONS_KEY, sessions);
+        render();
+      } catch (err) {
+        alert("Couldn't read that backup file.");
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  render();
+</script>
+</body>
+</html>
