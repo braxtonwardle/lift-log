@@ -53,13 +53,18 @@
     background: var(--panel); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px;
     display: flex; align-items: center; justify-content: space-between; gap: 10px; cursor: pointer; border: none; width: 100%; text-align: left; font-family: inherit;
   }
-  .wc-name { color: var(--ink); font-size: 15px; font-weight: 600; }
+  .wc-main { flex: 1; min-width: 0; }
+  .wc-name {
+    color: var(--ink); font-size: 15px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
   .wc-meta { color: var(--muted); font-size: 11.5px; margin-top: 3px; }
   .wc-actions { display: flex; gap: 6px; flex: none; }
   .icon-btn {
     width: 28px; height: 28px; border-radius: 7px; border: 1px solid var(--line2);
     background: transparent; color: var(--muted); font-size: 13px; cursor: pointer;
   }
+  .icon-btn:disabled { opacity: .3; cursor: default; }
 
   .add-btn {
     width: 100%; padding: 12px; border-radius: 10px; border: 1.5px dashed var(--line2);
@@ -285,7 +290,7 @@
     if (workouts.length === 0) {
       html += `<div class="empty-state">No workouts yet.<br>Build one to get started.</div>`;
     } else {
-      workouts.forEach(w => {
+      workouts.forEach((w, idx) => {
         html += `
           <div class="workout-card" data-start="${w.id}">
             <div class="wc-main">
@@ -293,6 +298,8 @@
               <div class="wc-meta">${w.exercises.length} exercise${w.exercises.length === 1 ? "" : "s"} · ${escapeHTML(lastDoneLabel(w.id))}</div>
             </div>
             <div class="wc-actions">
+              <button class="icon-btn" data-move-up="${w.id}" ${idx === 0 ? "disabled" : ""}>↑</button>
+              <button class="icon-btn" data-move-down="${w.id}" ${idx === workouts.length - 1 ? "disabled" : ""}>↓</button>
               <button class="icon-btn" data-edit="${w.id}">✎</button>
               <button class="icon-btn" data-del="${w.id}">🗑</button>
             </div>
@@ -314,6 +321,28 @@
 
     app.querySelectorAll("[data-start]").forEach(el => {
       el.querySelector(".wc-main")?.addEventListener("click", () => startSession(el.getAttribute("data-start")));
+    });
+    app.querySelectorAll("[data-move-up]").forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const idx = workouts.findIndex(x => x.id === el.getAttribute("data-move-up"));
+        if (idx > 0) {
+          [workouts[idx - 1], workouts[idx]] = [workouts[idx], workouts[idx - 1]];
+          saveJSON(WORKOUTS_KEY, workouts);
+          render();
+        }
+      });
+    });
+    app.querySelectorAll("[data-move-down]").forEach(el => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const idx = workouts.findIndex(x => x.id === el.getAttribute("data-move-down"));
+        if (idx < workouts.length - 1) {
+          [workouts[idx], workouts[idx + 1]] = [workouts[idx + 1], workouts[idx]];
+          saveJSON(WORKOUTS_KEY, workouts);
+          render();
+        }
+      });
     });
     app.querySelectorAll("[data-edit]").forEach(el => {
       el.addEventListener("click", (e) => { e.stopPropagation(); openBuilder(el.getAttribute("data-edit")); });
