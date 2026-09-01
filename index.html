@@ -77,8 +77,10 @@
   .sets-field { flex: none; width: 64px; }
   .mini-label { color: var(--muted2); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; display: block; }
   .sets-input { width: 64px; flex: none; text-align: center; }
-  .check-label { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; }
-  .check-label input { width: 14px; height: 14px; accent-color: var(--gold); }
+  .type-select {
+    background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; color: var(--muted);
+    font-size: 11.5px; padding: 5px 6px; font-family: inherit;
+  }
   .remove-row-btn {
     border: none; background: transparent; color: var(--muted2); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;
   }
@@ -92,37 +94,37 @@
     background: transparent; color: var(--muted2); font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 8px;
   }
 
-  .ex-card { background: var(--panel); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
-  .ex-name { color: var(--ink); font-size: 14.5px; font-weight: 700; margin-bottom: 8px; }
-
-  .last-note { color: var(--muted2); font-size: 11.5px; line-height: 1.4; margin-bottom: 10px; }
-
-  .set-row { display: flex; align-items: center; gap: 8px; margin-bottom: 7px; }
-  .set-label { width: 42px; flex: none; color: var(--muted2); font-size: 12px; }
-  .set-row input[type="number"] {
-    flex: 1; min-width: 0; background: var(--bg); border: 1px solid var(--line2); border-radius: 8px;
-    padding: 8px 9px; color: var(--ink); font-size: 14px; font-family: inherit;
-  }
-  .set-unit { color: var(--muted2); font-size: 11px; flex: none; width: 20px; }
-  .set-remove {
-    flex: none; width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--line2);
-    background: transparent; color: var(--muted2); font-size: 13px; cursor: pointer; line-height: 1;
+  .ex-card { background: var(--panel); border-radius: 9px; padding: 9px 11px; margin-bottom: 7px; }
+  .ex-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+  .ex-name { color: var(--ink); font-size: 13.5px; font-weight: 700; flex: none; }
+  .ex-last {
+    color: var(--muted2); font-size: 10px; white-space: nowrap; overflow: hidden;
+    text-overflow: ellipsis; min-width: 0;
   }
 
-  .set-actions { display: flex; margin-top: 4px; margin-bottom: 4px; }
-  .small-btn-ghost {
-    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; font-family: inherit;
-    background: transparent; color: var(--muted2); border: 1px solid var(--line2);
+  .row2 { display: flex; align-items: center; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .wt-box, .val-box {
+    background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; color: var(--ink);
+    font-size: 13px; text-align: center; height: 32px; font-family: inherit; padding: 0 4px;
   }
+  .wt-box { width: 48px; flex: none; }
+  .val-box { width: 36px; flex: none; }
+  .unit { color: var(--muted2); font-size: 10px; flex: none; }
+  .addset, .remset {
+    border: none; background: transparent; color: var(--muted2); font-size: 10.5px; cursor: pointer;
+    font-family: inherit; padding: 0; flex: none;
+  }
+  .row-spacer { flex: 1; min-width: 4px; }
 
-  .grade-row { display: flex; gap: 6px; margin-top: 10px; }
-  .grade-btn {
-    flex: 1; padding: 8px 4px; border-radius: 8px; border: 1px solid var(--line2);
-    background: transparent; color: var(--muted); font-size: 11px; cursor: pointer; font-family: inherit; line-height: 1.3;
+  .grade-icons { display: flex; gap: 5px; flex: none; }
+  .gicon {
+    width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line2);
+    background: transparent; color: var(--muted); font-size: 13px; cursor: pointer; font-family: inherit;
+    display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1;
   }
-  .grade-btn.active[data-grade="1"] { background: rgba(122,140,76,.25); color: var(--olive); border-color: var(--olive); }
-  .grade-btn.active[data-grade="2"] { background: rgba(212,162,76,.2); color: var(--gold); border-color: var(--gold); }
-  .grade-btn.active[data-grade="3"] { background: rgba(181,84,74,.25); color: var(--red); border-color: var(--red); }
+  .gicon.active[data-grade="1"] { border-color: var(--olive); color: var(--olive); }
+  .gicon.active[data-grade="2"] { border-color: var(--gold); color: var(--gold); }
+  .gicon.active[data-grade="3"] { border-color: var(--red); color: var(--red); }
 
   .footer-actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
   .footer-btn {
@@ -150,8 +152,8 @@
   }
   function saveJSON(key, val) { localStorage.setItem(key, JSON.stringify(val)); }
 
-  let workouts = loadJSON(WORKOUTS_KEY, []);   // [{id, name, exercises:[{id, name, sets, targetReps}]}]
-  let history = loadJSON(HISTORY_KEY, {});     // { "name": {sets:[{weight,reps}], grade, date} }
+  let workouts = loadJSON(WORKOUTS_KEY, []);   // [{id, name, exercises:[{id, name, sets, targetReps, type}]}]
+  let history = loadJSON(HISTORY_KEY, {});     // { "name": {type, weight, sets:[value], grade, date} }
   let sessions = loadJSON(SESSIONS_KEY, []);   // [{id, date, workoutId, workoutName, exercises:[...]}]
   let draft = loadJSON(DRAFT_KEY, null);       // in-progress session, or null
 
@@ -186,6 +188,52 @@
     if (changed) { history = merged; saveJSON(HISTORY_KEY, history); }
   }
   migrateHistoryRoles();
+
+  // ---------- one-time migration: one shared weight per exercise, not per set ----------
+  // Weight used to live on every set ({weight, reps} per set); the input got
+  // redundant since working-set weight is normally the same across all sets of
+  // an exercise. Weight is now a single field per exercise, and each set is
+  // just its rep count (or, for timed exercises, its seconds). Workout
+  // templates gain a "type" (weighted/bodyweight/timed) replacing the old
+  // bodyweight checkbox. History entries are converted using the first
+  // non-blank weight found across their old sets as the exercise's weight.
+  function migrateSharedWeight() {
+    let workoutsChanged = false;
+    workouts.forEach(w => {
+      w.exercises.forEach(ex => {
+        if (ex.type !== undefined) return;
+        ex.type = ex.bodyweight ? "bodyweight" : "weighted";
+        delete ex.bodyweight;
+        workoutsChanged = true;
+      });
+    });
+    if (workoutsChanged) saveJSON(WORKOUTS_KEY, workouts);
+
+    let historyChanged = false;
+    Object.keys(history).forEach(key => {
+      const entry = history[key];
+      if (!entry.sets || entry.sets.length === 0 || typeof entry.sets[0] !== "object") return;
+      const found = entry.sets.find(s => s.weight !== "" && s.weight !== undefined);
+      history[key] = {
+        type: found ? "weighted" : "bodyweight",
+        weight: found ? String(found.weight) : "",
+        sets: entry.sets.map(s => s.reps).filter(v => v !== "" && v !== undefined),
+        grade: entry.grade,
+        date: entry.date,
+      };
+      historyChanged = true;
+    });
+    if (historyChanged) saveJSON(HISTORY_KEY, history);
+
+    // An in-progress draft built under the old per-set-weight shape can't be
+    // migrated meaningfully (it's mid-edit, not settled history) — discard it
+    // rather than risk rendering it wrong; history is unaffected either way.
+    if (draft && draft.exercises && draft.exercises.some(ex => Array.isArray(ex.sets) && ex.sets.length > 0 && typeof ex.sets[0] === "object")) {
+      draft = null;
+      localStorage.removeItem(DRAFT_KEY);
+    }
+  }
+  migrateSharedWeight();
 
   // ---------- state ----------
   let view = draft ? "session" : "home"; // "home" | "builder" | "session"
@@ -283,7 +331,7 @@
       const w = workouts.find(x => x.id === workoutId);
       builderState = { id: w.id, name: w.name, exercises: w.exercises.map(ex => ({ ...ex })) };
     } else {
-      builderState = { id: null, name: "", exercises: [{ id: uid(), name: "", sets: 3, targetReps: "", bodyweight: false }] };
+      builderState = { id: null, name: "", exercises: [{ id: uid(), name: "", sets: 3, targetReps: "", type: "weighted" }] };
     }
     view = "builder";
     render();
@@ -325,7 +373,11 @@
             </div>
           </div>
           <div class="builder-row-bottom">
-            <label class="check-label"><input type="checkbox" data-field="bodyweight" ${ex.bodyweight ? "checked" : ""}> Bodyweight (no weight field)</label>
+            <select class="type-select" data-field="type">
+              <option value="weighted" ${!ex.type || ex.type === "weighted" ? "selected" : ""}>Weighted</option>
+              <option value="bodyweight" ${ex.type === "bodyweight" ? "selected" : ""}>Bodyweight</option>
+              <option value="timed" ${ex.type === "timed" ? "selected" : ""}>Timed (seconds)</option>
+            </select>
             <button class="remove-row-btn" data-remove="${i}">remove</button>
           </div>
         </div>
@@ -341,11 +393,12 @@
     app.querySelectorAll(".builder-row").forEach(row => {
       const idx = Number(row.getAttribute("data-idx"));
       row.querySelectorAll("[data-field]").forEach(input => {
-        input.addEventListener("input", () => {
+        const evt = input.tagName === "SELECT" ? "change" : "input";
+        input.addEventListener(evt, () => {
           const field = input.getAttribute("data-field");
           if (field === "sets") builderState.exercises[idx].sets = Math.max(1, Math.min(10, Number(input.value) || 1));
           else if (field === "targetReps") builderState.exercises[idx].targetReps = input.value === "" ? "" : Math.max(0, Math.min(50, Number(input.value) || 0));
-          else if (field === "bodyweight") builderState.exercises[idx].bodyweight = input.checked;
+          else if (field === "type") builderState.exercises[idx].type = input.value;
           else builderState.exercises[idx].name = input.value;
         });
       });
@@ -358,7 +411,7 @@
       });
     });
     document.getElementById("addExBtn").addEventListener("click", () => {
-      builderState.exercises.push({ id: uid(), name: "", sets: 3, targetReps: "", bodyweight: false });
+      builderState.exercises.push({ id: uid(), name: "", sets: 3, targetReps: "", type: "weighted" });
       render();
     });
     document.getElementById("saveWorkoutBtn").addEventListener("click", saveWorkout);
@@ -394,16 +447,17 @@
       workoutName: w.name,
       exercises: w.exercises.map(ex => {
         const h = history[normName(ex.name)];
-        const hasTarget = ex.targetReps !== undefined && ex.targetReps !== null && ex.targetReps !== "";
+        const type = ex.type || "weighted";
+        const hasTarget = type !== "timed" && ex.targetReps !== undefined && ex.targetReps !== null && ex.targetReps !== "";
         return {
           name: ex.name,
+          type,
           targetReps: ex.targetReps,
-          bodyweight: !!ex.bodyweight,
+          weight: (type === "weighted" && h && h.weight) ? String(h.weight) : "",
           grade: null,
-          sets: Array.from({ length: ex.sets }, (_, i) => ({
-            weight: (ex.bodyweight || !h || !h.sets[i]) ? "" : String(h.sets[i].weight),
-            reps: hasTarget ? String(ex.targetReps) : (h && h.sets[i] ? String(h.sets[i].reps) : ""),
-          })),
+          sets: Array.from({ length: ex.sets }, (_, i) => (
+            hasTarget ? String(ex.targetReps) : (h && h.sets && h.sets[i] !== undefined ? String(h.sets[i]) : "")
+          )),
         };
       }),
     };
@@ -416,11 +470,12 @@
 
   function lastNoteFor(name) {
     const h = history[normName(name)];
-    if (!h || !h.sets || h.sets.length === 0) return "No history yet for this exercise.";
-    const setsStr = h.sets.filter(s => s.reps !== "" || s.weight !== "")
-      .map(s => s.weight !== "" ? `${s.weight}×${s.reps}` : `${s.reps}`).join(", ");
-    let str = "Last time: " + (setsStr || "—") + " on " + h.date;
-    if (h.grade) str += " — graded: " + GRADE_LABELS[h.grade];
+    if (!h || !h.sets || h.sets.length === 0) return "no history yet";
+    const vals = h.sets.join(",");
+    let str = (h.type === "weighted" && h.weight !== "") ? `last: ${h.weight}×${vals}`
+      : h.type === "timed" ? `last: ${vals}s`
+      : `last: ${vals}`;
+    if (h.grade) str += " · " + GRADE_LABELS[h.grade].toLowerCase();
     return str;
   }
 
@@ -432,30 +487,27 @@
       </div>
     `;
     draft.exercises.forEach((ex, i) => {
-      html += `<div class="ex-card" data-exidx="${i}"><div class="ex-name">${escapeHTML(ex.name)}</div>`;
-      html += `<div class="last-note">${escapeHTML(lastNoteFor(ex.name))}</div>`;
-      ex.sets.forEach((s, j) => {
-        const weightFields = ex.bodyweight ? "" : `
-            <input type="number" inputmode="decimal" placeholder="wt" data-set-field="weight" data-setidx="${j}" value="${escapeHTML(s.weight)}">
-            <span class="set-unit">lb</span>`;
-        html += `
-          <div class="set-row">
-            <span class="set-label">Set ${j + 1}</span>
-            ${weightFields}
-            <input type="number" inputmode="numeric" placeholder="reps" data-set-field="reps" data-setidx="${j}" value="${escapeHTML(s.reps)}">
-            <button class="set-remove" data-remove-set="${j}">×</button>
-          </div>
-        `;
+      html += `<div class="ex-card" data-exidx="${i}">`;
+      html += `<div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span><span class="ex-last">${escapeHTML(lastNoteFor(ex.name))}</span></div>`;
+      html += `<div class="row2">`;
+      if (ex.type === "weighted") {
+        html += `<input class="wt-box" type="number" inputmode="decimal" placeholder="wt" data-weight-field="1" value="${escapeHTML(ex.weight)}"><span class="unit">lb</span>`;
+      }
+      ex.sets.forEach((v, j) => {
+        html += `<input class="val-box" type="number" inputmode="numeric" placeholder="${ex.type === "timed" ? "sec" : "reps"}" data-set-field="1" data-setidx="${j}" value="${escapeHTML(v)}">`;
       });
-      html += `<div class="set-actions"><button class="small-btn-ghost" data-add-set="1">+ Add set</button></div>`;
+      if (ex.type === "timed") html += `<span class="unit">sec</span>`;
+      html += `<button class="addset" data-add-set="1">+set</button>`;
+      if (ex.sets.length > 0) html += `<button class="remset" data-remove-set="1">−set</button>`;
+      html += `<span class="row-spacer"></span>`;
       html += `
-        <div class="grade-row">
-          <button class="grade-btn ${ex.grade === 1 ? "active" : ""}" data-grade="1">↑ Increase<br>next time</button>
-          <button class="grade-btn ${ex.grade === 2 ? "active" : ""}" data-grade="2">= Keep<br>same</button>
-          <button class="grade-btn ${ex.grade === 3 ? "active" : ""}" data-grade="3">↓ Decrease<br>next time</button>
+        <div class="grade-icons">
+          <button class="gicon ${ex.grade === 1 ? "active" : ""}" data-grade="1">↑</button>
+          <button class="gicon ${ex.grade === 2 ? "active" : ""}" data-grade="2">=</button>
+          <button class="gicon ${ex.grade === 3 ? "active" : ""}" data-grade="3">↓</button>
         </div>
       `;
-      html += `</div>`;
+      html += `</div></div>`;
     });
     html += `<button class="primary-btn" id="finishBtn">Finish workout</button>`;
     html += `<button class="ghost-btn" id="backHomeBtn">Save &amp; go back (resume later)</button>`;
@@ -467,27 +519,29 @@
 
     app.querySelectorAll(".ex-card").forEach(card => {
       const i = Number(card.getAttribute("data-exidx"));
+      const weightInput = card.querySelector("[data-weight-field]");
+      if (weightInput) weightInput.addEventListener("input", () => {
+        draft.exercises[i].weight = weightInput.value;
+        saveDraft();
+      });
       card.querySelectorAll("[data-set-field]").forEach(input => {
         input.addEventListener("input", () => {
           const j = Number(input.getAttribute("data-setidx"));
-          const field = input.getAttribute("data-set-field");
-          draft.exercises[i].sets[j][field] = input.value;
+          draft.exercises[i].sets[j] = input.value;
           saveDraft();
         });
       });
-      card.querySelectorAll("[data-remove-set]").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const j = Number(btn.getAttribute("data-remove-set"));
-          draft.exercises[i].sets.splice(j, 1);
-          saveDraft();
-          render();
-        });
+      const removeSetBtn = card.querySelector("[data-remove-set]");
+      if (removeSetBtn) removeSetBtn.addEventListener("click", () => {
+        draft.exercises[i].sets.pop();
+        saveDraft();
+        render();
       });
       const addSetBtn = card.querySelector("[data-add-set]");
       if (addSetBtn) addSetBtn.addEventListener("click", () => {
-        const tr = draft.exercises[i].targetReps;
-        const hasTarget = tr !== undefined && tr !== null && tr !== "";
-        draft.exercises[i].sets.push({ weight: "", reps: hasTarget ? String(tr) : "" });
+        const ex = draft.exercises[i];
+        const hasTarget = ex.type !== "timed" && ex.targetReps !== undefined && ex.targetReps !== null && ex.targetReps !== "";
+        ex.sets.push(hasTarget ? String(ex.targetReps) : "");
         saveDraft();
         render();
       });
@@ -511,13 +565,11 @@
     const date = todayKey();
     const loggedExercises = [];
     draft.exercises.forEach(ex => {
-      const sets = ex.sets.filter(s => s.weight !== "" || s.reps !== "").map(s => ({
-        weight: s.weight === "" ? "" : Number(s.weight),
-        reps: s.reps === "" ? "" : Number(s.reps),
-      }));
+      const sets = ex.sets.filter(v => v !== "").map(v => Number(v));
       if (sets.length === 0) return; // left blank (e.g. skipped this time) — don't touch history
-      history[normName(ex.name)] = { sets, grade: ex.grade, date };
-      loggedExercises.push({ name: ex.name, grade: ex.grade, sets });
+      const weight = ex.type === "weighted" ? ex.weight : "";
+      history[normName(ex.name)] = { type: ex.type, weight, sets, grade: ex.grade, date };
+      loggedExercises.push({ name: ex.name, type: ex.type, weight, sets, grade: ex.grade });
     });
     saveJSON(HISTORY_KEY, history);
 
@@ -540,11 +592,11 @@
 
   // ---------- export / backup ----------
   function exportCSV() {
-    const rows = [["date", "workout", "exercise", "set", "weight", "reps", "grade"]];
+    const rows = [["date", "workout", "exercise", "type", "weight", "set", "value", "grade"]];
     sessions.forEach(s => {
       s.exercises.forEach(ex => {
-        ex.sets.forEach((set, i) => {
-          rows.push([s.date, s.workoutName, ex.name, i + 1, set.weight, set.reps, ex.grade || ""]);
+        ex.sets.forEach((val, i) => {
+          rows.push([s.date, s.workoutName, ex.name, ex.type, ex.weight || "", i + 1, val, ex.grade || ""]);
         });
       });
     });
