@@ -292,7 +292,7 @@
   }
 
   function workoutMetaText(w) {
-    if (draft && draft.workoutId === w.id) {
+    if (draft && draft.saved && draft.workoutId === w.id) {
       const total = draft.exercises.length;
       const done = draft.exercises.filter(isGraded).length;
       return `In progress — ${done}/${total} logged, tap to resume`;
@@ -312,7 +312,7 @@
       html += `<div class="empty-state">No workouts yet.<br>Build one to get started.</div>`;
     } else {
       workouts.forEach((w, idx) => {
-        const inProgress = !!(draft && draft.workoutId === w.id);
+        const inProgress = !!(draft && draft.saved && draft.workoutId === w.id);
         html += `
           <div class="workout-card${inProgress ? " in-progress" : ""}" data-start="${w.id}">
             <div class="wc-main">
@@ -505,9 +505,11 @@
   function startSession(workoutId) {
     const w = workouts.find(x => x.id === workoutId);
     if (!w) return;
-    // A draft already in progress for this exact workout is resumed as-is
-    // rather than rebuilt from history, so in-progress edits aren't lost.
-    if (draft && draft.workoutId === workoutId) {
+    // A draft only resumes if it was explicitly kept (via "Save & go back" or
+    // by having been graded) -- see saveDraftAndGoHome/goBackFromSession. A
+    // leftover never-saved draft (e.g. the tab just got closed mid-peek) is
+    // silently replaced by a fresh one rather than resumed.
+    if (draft && draft.saved && draft.workoutId === workoutId) {
       view = "session";
       render();
       return;
@@ -515,6 +517,7 @@
     draft = {
       workoutId: w.id,
       workoutName: w.name,
+      saved: false,
       exercises: w.exercises.map(ex => {
         const h = history[normName(ex.name)];
         const type = ex.type || "weighted";
@@ -609,8 +612,8 @@
     html += `<button class="discard-btn" id="discardBtn">Discard this session</button>`;
     app.innerHTML = html;
 
-    document.getElementById("backBtn").addEventListener("click", goHomeKeepDraft);
-    document.getElementById("backHomeBtn").addEventListener("click", goHomeKeepDraft);
+    document.getElementById("backBtn").addEventListener("click", goBackFromSession);
+    document.getElementById("backHomeBtn").addEventListener("click", saveDraftAndGoHome);
     document.getElementById("finishBtn").addEventListener("click", finishWorkout);
     document.getElementById("discardBtn").addEventListener("click", discardDraft);
     updateSessionProgress();
@@ -654,7 +657,23 @@
     });
   }
 
-  function goHomeKeepDraft() {
+  // "Save & go back" is the only thing that marks a draft as one to keep.
+  function saveDraftAndGoHome() {
+    if (draft) draft.saved = true;
+    saveDraft();
+    view = "home";
+    render();
+  }
+
+  // The plain back arrow is just navigation, not a save -- a draft that was
+  // never explicitly saved (e.g. you only opened a workout to look at it)
+  // is dropped rather than left behind as a false "in progress."  A draft
+  // that WAS already saved on an earlier visit is left alone.
+  function goBackFromSession() {
+    if (draft && !draft.saved) {
+      draft = null;
+      localStorage.removeItem(DRAFT_KEY);
+    }
     view = "home";
     render();
   }
