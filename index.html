@@ -478,21 +478,22 @@
 
   function saveDraft() { saveJSON(DRAFT_KEY, draft); }
 
-  function hasAnySetValue(ex) { return ex.sets.some(v => v !== ""); }
+  // A set's boxes start prefilled from history, so "has a value" is true
+  // before you've done anything — grading is the deliberate act that marks
+  // an exercise as actually done this session (tapping "=" works fine as a
+  // plain confirmation when there's nothing to grade up or down about).
+  function isGraded(ex) { return ex.grade !== null && ex.grade !== undefined; }
 
-  // Updates the progress bar and each card's dim/lit state directly, without
-  // a full render() — a full render() would rebuild every input and drop
-  // focus mid-keystroke, so this runs on every input event instead.
   function updateSessionProgress() {
     const total = draft.exercises.length;
-    const done = draft.exercises.filter(hasAnySetValue).length;
+    const done = draft.exercises.filter(isGraded).length;
     const fill = document.getElementById("sessProgFill");
     const text = document.getElementById("sessProgText");
     if (fill) fill.style.width = (total ? Math.round((done / total) * 100) : 0) + "%";
     if (text) text.textContent = done + "/" + total + " logged";
     document.querySelectorAll(".ex-card").forEach(card => {
       const i = Number(card.getAttribute("data-exidx"));
-      card.classList.toggle("done", hasAnySetValue(draft.exercises[i]));
+      card.classList.toggle("done", isGraded(draft.exercises[i]));
     });
   }
 
@@ -517,7 +518,7 @@
       <div class="session-progress-text" id="sessProgText"></div>
     `;
     draft.exercises.forEach((ex, i) => {
-      html += `<div class="ex-card${hasAnySetValue(ex) ? " done" : ""}" data-exidx="${i}">`;
+      html += `<div class="ex-card${isGraded(ex) ? " done" : ""}" data-exidx="${i}">`;
       html += `<div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span><span class="ex-last">${escapeHTML(lastNoteFor(ex.name))}</span></div>`;
       html += `<div class="row2">`;
       if (ex.type === "weighted") {
@@ -554,14 +555,12 @@
       if (weightInput) weightInput.addEventListener("input", () => {
         draft.exercises[i].weight = weightInput.value;
         saveDraft();
-        updateSessionProgress();
       });
       card.querySelectorAll("[data-set-field]").forEach(input => {
         input.addEventListener("input", () => {
           const j = Number(input.getAttribute("data-setidx"));
           draft.exercises[i].sets[j] = input.value;
           saveDraft();
-          updateSessionProgress();
         });
       });
       const removeSetBtn = card.querySelector("[data-remove-set]");
