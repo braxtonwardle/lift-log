@@ -87,7 +87,7 @@
   .ac-list {
     display: none; position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px;
     background: var(--panel); border: 1px solid var(--line2); border-radius: 8px;
-    max-height: 168px; overflow-y: auto; z-index: 20;
+    max-height: 240px; overflow-y: auto; z-index: 20;
   }
   .ac-list.open { display: block; }
   .ac-item {
@@ -517,8 +517,7 @@
         const q = nameInput.value.trim().toLowerCase();
         const matches = knownExerciseNames()
           .filter(n => n.toLowerCase() !== q)
-          .filter(n => !q || n.toLowerCase().includes(q))
-          .slice(0, 8);
+          .filter(n => !q || n.toLowerCase().includes(q));
         if (matches.length === 0) { acList.classList.remove("open"); acList.innerHTML = ""; return; }
         acList.innerHTML = matches.map(n => `<button type="button" class="ac-item">${escapeHTML(n)}</button>`).join("");
         acList.classList.add("open");
