@@ -187,7 +187,12 @@
     const d = new Date(); const off = d.getTimezoneOffset();
     return new Date(d.getTime() - off * 60000).toISOString().slice(0, 10);
   }
-  function normName(n) { return String(n || "").trim().toLowerCase().replace(/\s+/g, " "); }
+  // Case/whitespace/punctuation-insensitive only -- deliberately doesn't try to
+  // guess that e.g. "Row" and "Rows" are the same exercise, since that kind of
+  // fuzzy match risks merging two things that are actually different.
+  function normName(n) {
+    return String(n || "").trim().toLowerCase().replace(/[-'".,]/g, " ").replace(/\s+/g, " ").trim();
+  }
   function escapeHTML(str) {
     return String(str).replace(/[&<>"']/g, s => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[s]));
   }
@@ -259,6 +264,25 @@
     }
   }
   migrateSharedWeight();
+
+  // ---------- one-time migration: punctuation-insensitive exercise names ----------
+  // normName now also folds out hyphens/apostrophes/periods/commas, so an
+  // existing key like "pull-ups" needs to collapse onto "pull ups" if that
+  // variant also has history. Existing keys are already lowercase/trimmed
+  // from the old normName, so re-running the new one over each key (not the
+  // original exercise name, which isn't stored) is sufficient.
+  function migrateNormalization() {
+    let changed = false;
+    const merged = {};
+    Object.keys(history).forEach(key => {
+      const newKey = normName(key);
+      if (newKey !== key) changed = true;
+      const entry = history[key];
+      if (!merged[newKey] || (entry.date || "") > (merged[newKey].date || "")) merged[newKey] = entry;
+    });
+    if (changed) { history = merged; saveJSON(HISTORY_KEY, history); }
+  }
+  migrateNormalization();
 
   // ---------- state ----------
   // Always opens on the home screen, even if a draft was left in-progress from
@@ -400,11 +424,18 @@
     render();
   }
 
+  // Deduped by normalized spelling so "Bench Press" and its own lowercase
+  // history key don't show up as two separate suggestions -- prefers the
+  // properly-cased version from a workout template over history's raw key.
   function knownExerciseNames() {
-    const names = new Set();
-    workouts.forEach(w => w.exercises.forEach(ex => { if (ex.name) names.add(ex.name); }));
-    Object.keys(history).forEach(n => { if (n) names.add(n); });
-    return Array.from(names);
+    const byNorm = {};
+    workouts.forEach(w => w.exercises.forEach(ex => {
+      if (ex.name) byNorm[normName(ex.name)] = ex.name;
+    }));
+    Object.keys(history).forEach(key => {
+      if (key && !byNorm[key]) byNorm[key] = key;
+    });
+    return Object.values(byNorm);
   }
 
   function renderBuilder() {
