@@ -228,7 +228,6 @@
     });
     if (changed) { history = merged; saveJSON(HISTORY_KEY, history); }
   }
-  migrateHistoryRoles();
 
   // ---------- one-time migration: one shared weight per exercise, not per set ----------
   // Weight used to live on every set ({weight, reps} per set); the input got
@@ -274,7 +273,6 @@
       localStorage.removeItem(DRAFT_KEY);
     }
   }
-  migrateSharedWeight();
 
   // ---------- one-time migration: punctuation-insensitive exercise names ----------
   // normName now also folds out hyphens/apostrophes/periods/commas, so an
@@ -293,7 +291,42 @@
     });
     if (changed) { history = merged; saveJSON(HISTORY_KEY, history); }
   }
-  migrateNormalization();
+
+  // ---------- one-time migration: sessions to the flat per-set-value shape ----------
+  // migrateSharedWeight() converted `history` to the new {type, weight, sets}
+  // shape but missed the `sessions` log, which exportCSV() reads -- old
+  // session records still held {weight, reps} objects per set, which
+  // rendered as "[object Object]" in the CSV instead of a number. Converts
+  // each old session exercise the same way, inferring type from the
+  // already-migrated history entry for that name where one exists.
+  function migrateSessionsShape() {
+    let changed = false;
+    sessions.forEach(s => {
+      s.exercises.forEach(ex => {
+        if (!ex.sets || ex.sets.length === 0 || typeof ex.sets[0] !== "object") return;
+        const found = ex.sets.find(set => set.weight !== "" && set.weight !== undefined);
+        const h = history[normName(ex.name)];
+        ex.type = h ? h.type : (found ? "weighted" : "bodyweight");
+        ex.weight = found ? String(found.weight) : "";
+        ex.sets = ex.sets.map(set => set.reps).filter(v => v !== "" && v !== undefined);
+        delete ex.role;
+        changed = true;
+      });
+    });
+    if (changed) saveJSON(SESSIONS_KEY, sessions);
+  }
+
+  // Runs at startup and again after a "Restore backup" -- migrations only
+  // touch the in-memory workouts/history/sessions variables, so loading an
+  // older-format backup after the page has already started needs another
+  // pass or the just-restored data stays in its old shape until next reload.
+  function runMigrations() {
+    migrateHistoryRoles();
+    migrateSharedWeight();
+    migrateNormalization();
+    migrateSessionsShape();
+  }
+  runMigrations();
 
   // ---------- state ----------
   // Always opens on the home screen, even if a draft was left in-progress from
@@ -524,18 +557,6 @@
       }
       nameInput.addEventListener("focus", updateSuggestions);
       nameInput.addEventListener("input", updateSuggestions);
-      // Closing on blur (even with a delay) fights scrolling -- touch fires
-      // blur the instant a finger lands, before the browser knows if it's a
-      // tap or the start of a scroll-drag, so any scroll longer than the
-      // delay got the list yanked out from under it. Closing only on a
-      // genuine tap outside the field/list sidesteps that entirely, and a
-      // scroll-drag never fires click on an item, so it can't accidentally
-      // select one either.
-      document.addEventListener("pointerdown", (e) => {
-        if (!acList.classList.contains("open")) return;
-        if (nameInput.contains(e.target) || acList.contains(e.target)) return;
-        acList.classList.remove("open");
-      });
       acList.addEventListener("click", (e) => {
         const btn = e.target.closest(".ac-item");
         if (!btn) return;
@@ -839,6 +860,7 @@
         saveJSON(WORKOUTS_KEY, workouts);
         saveJSON(HISTORY_KEY, history);
         saveJSON(SESSIONS_KEY, sessions);
+        runMigrations();
         render();
       } catch (err) {
         alert("Couldn't read that backup file.");
@@ -846,6 +868,21 @@
     };
     reader.readAsText(file);
   }
+
+  // One global listener for every exercise-name suggestion list, rather than
+  // one per row re-added on every renderBuilder() call (add/remove exercise,
+  // etc.) -- the per-row version leaked a fresh set of document listeners on
+  // every re-render, since app.innerHTML replaces the DOM but never
+  // unregisters listeners still holding closures over the old elements.
+  // Closing on blur (even delayed) fights scrolling -- touch fires blur the
+  // instant a finger lands, before the browser knows if it's a tap or a
+  // scroll-drag -- so this only closes a list on a genuine tap outside its
+  // own name-field wrapper (which contains both the input and the list).
+  document.addEventListener("pointerdown", (e) => {
+    document.querySelectorAll(".ac-list.open").forEach(list => {
+      if (!list.parentElement.contains(e.target)) list.classList.remove("open");
+    });
+  });
 
   render();
 </script>
