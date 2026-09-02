@@ -524,18 +524,25 @@
       }
       nameInput.addEventListener("focus", updateSuggestions);
       nameInput.addEventListener("input", updateSuggestions);
-      // Delayed rather than immediate so a tap on a suggestion (which blurs
-      // the input first, then fires click) still has the list open when its
-      // click handler runs. Selecting on click rather than pointerdown/mousedown
-      // is what lets a scroll-drag inside the list stay a scroll instead of an
-      // accidental selection -- browsers only fire click for an actual tap.
-      nameInput.addEventListener("blur", () => setTimeout(() => acList.classList.remove("open"), 200));
+      // Closing on blur (even with a delay) fights scrolling -- touch fires
+      // blur the instant a finger lands, before the browser knows if it's a
+      // tap or the start of a scroll-drag, so any scroll longer than the
+      // delay got the list yanked out from under it. Closing only on a
+      // genuine tap outside the field/list sidesteps that entirely, and a
+      // scroll-drag never fires click on an item, so it can't accidentally
+      // select one either.
+      document.addEventListener("pointerdown", (e) => {
+        if (!acList.classList.contains("open")) return;
+        if (nameInput.contains(e.target) || acList.contains(e.target)) return;
+        acList.classList.remove("open");
+      });
       acList.addEventListener("click", (e) => {
         const btn = e.target.closest(".ac-item");
         if (!btn) return;
         nameInput.value = btn.textContent;
         builderState.exercises[idx].name = btn.textContent;
         acList.classList.remove("open");
+        nameInput.focus();
       });
     });
     app.querySelectorAll("[data-remove]").forEach(btn => {
