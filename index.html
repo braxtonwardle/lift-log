@@ -83,7 +83,18 @@
   .builder-row { background: var(--panel); border-radius: 10px; padding: 12px; margin-bottom: 8px; }
   .builder-row-top { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-end; }
   .builder-row-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-  .name-field { flex: 1; }
+  .name-field { flex: 1; position: relative; }
+  .ac-list {
+    display: none; position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px;
+    background: var(--panel); border: 1px solid var(--line2); border-radius: 8px;
+    max-height: 168px; overflow-y: auto; z-index: 20;
+  }
+  .ac-list.open { display: block; }
+  .ac-item {
+    display: block; width: 100%; text-align: left; padding: 8px 10px; border: none;
+    background: transparent; color: var(--ink); font-size: 13px; cursor: pointer; font-family: inherit;
+  }
+  .ac-item:active { background: var(--bg); }
   .sets-field { flex: none; width: 64px; }
   .mini-label { color: var(--muted); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; display: block; }
   .sets-input { width: 64px; flex: none; text-align: center; }
@@ -455,7 +466,8 @@
           <div class="builder-row-top">
             <div class="name-field">
               <span class="mini-label">Exercise name</span>
-              <input class="text-input ex-name-input" list="exNames" type="text" placeholder="e.g. Bench Press" value="${escapeHTML(ex.name)}" data-field="name">
+              <input class="text-input ex-name-input" type="text" placeholder="e.g. Bench Press" value="${escapeHTML(ex.name)}" data-field="name" autocomplete="off">
+              <div class="ac-list"></div>
             </div>
             <div class="sets-field">
               <span class="mini-label">Sets</span>
@@ -477,7 +489,6 @@
         </div>
       `;
     });
-    html += `<datalist id="exNames">${knownExerciseNames().map(n => `<option value="${escapeHTML(n)}">`).join("")}</datalist>`;
     html += `<button class="ghost-btn" id="addExBtn">+ Add exercise</button>`;
     html += `<button class="primary-btn" id="saveWorkoutBtn" style="margin-top:16px;">Save workout</button>`;
     app.innerHTML = html;
@@ -495,6 +506,33 @@
           else if (field === "type") builderState.exercises[idx].type = input.value;
           else builderState.exercises[idx].name = input.value;
         });
+      });
+
+      // Custom suggestion dropdown instead of a native <datalist> -- iOS
+      // Safari has long had unreliable/no picker UI for input[list] on text
+      // fields, even though it works fine on desktop browsers.
+      const nameInput = row.querySelector(".ex-name-input");
+      const acList = row.querySelector(".ac-list");
+      function updateSuggestions() {
+        const q = nameInput.value.trim().toLowerCase();
+        const matches = knownExerciseNames()
+          .filter(n => n.toLowerCase() !== q)
+          .filter(n => !q || n.toLowerCase().includes(q))
+          .slice(0, 8);
+        if (matches.length === 0) { acList.classList.remove("open"); acList.innerHTML = ""; return; }
+        acList.innerHTML = matches.map(n => `<button type="button" class="ac-item">${escapeHTML(n)}</button>`).join("");
+        acList.classList.add("open");
+      }
+      nameInput.addEventListener("focus", updateSuggestions);
+      nameInput.addEventListener("input", updateSuggestions);
+      nameInput.addEventListener("blur", () => acList.classList.remove("open"));
+      acList.addEventListener("pointerdown", (e) => {
+        const btn = e.target.closest(".ac-item");
+        if (!btn) return;
+        e.preventDefault(); // keeps focus on the input so blur doesn't race the selection
+        nameInput.value = btn.textContent;
+        builderState.exercises[idx].name = btn.textContent;
+        acList.classList.remove("open");
       });
     });
     app.querySelectorAll("[data-remove]").forEach(btn => {
