@@ -951,6 +951,37 @@
     if (e.target.tagName === "INPUT" && e.target.type === "number") e.target.select();
   });
 
+  // iOS can restore a backgrounded home-screen app from bfcache instead of
+  // reloading it -- the JS keeps running with whatever state it had at the
+  // moment it was backgrounded, frozen. If something changed in storage in
+  // the meantime (a save from just before backgrounding, another tab, etc.)
+  // and the page then acts on its stale in-memory copy, it can silently
+  // overwrite the newer data. Re-reads everything on resume and only
+  // touches state/re-renders if something actually differs, so this is a
+  // no-op on a normal app-switch where nothing changed underneath it.
+  function resyncFromStorage() {
+    const freshWorkouts = loadJSON(WORKOUTS_KEY, []);
+    const freshHistory = loadJSON(HISTORY_KEY, {});
+    const freshSessions = loadJSON(SESSIONS_KEY, []);
+    const freshDraft = loadJSON(DRAFT_KEY, null);
+    const changed = JSON.stringify(freshDraft) !== JSON.stringify(draft)
+      || JSON.stringify(freshWorkouts) !== JSON.stringify(workouts)
+      || JSON.stringify(freshHistory) !== JSON.stringify(history)
+      || JSON.stringify(freshSessions) !== JSON.stringify(sessions);
+    if (!changed) return;
+    workouts = freshWorkouts;
+    history = freshHistory;
+    sessions = freshSessions;
+    draft = freshDraft;
+    runMigrations();
+    if (view === "session" && !draft) view = "home";
+    render();
+  }
+  window.addEventListener("pageshow", (e) => { if (e.persisted) resyncFromStorage(); });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") resyncFromStorage();
+  });
+
   render();
 </script>
 </body>
