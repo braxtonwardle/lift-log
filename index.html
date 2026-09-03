@@ -162,6 +162,18 @@
   .gicon.active[data-grade="2"] { border-color: var(--gold); color: var(--gold); }
   .gicon.active[data-grade="3"] { border-color: var(--red); color: var(--red); }
 
+  .adjust-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+  .adjust-label { color: var(--muted); font-size: 11px; flex: none; }
+  .adjust-btn {
+    border: 1px solid var(--line2); background: transparent; color: var(--muted);
+    border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; font-family: inherit; flex: none;
+  }
+  .adjust-btn.active { border-color: var(--gold); color: var(--gold); }
+  .adjust-input {
+    width: 52px; background: var(--bg); border: 1px solid var(--line2); border-radius: 6px;
+    color: var(--ink); font-size: 12px; text-align: center; height: 28px; font-family: inherit; padding: 0 4px;
+  }
+
   .footer-actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
   .footer-btn {
     background: transparent; color: var(--muted2); border: 1px solid var(--line2);
@@ -602,6 +614,17 @@
   }
 
   // ---------- SESSION ----------
+  // Applies the increment the user chose when grading last time -- e.g. graded
+  // Increase and picked "+10" -- to that logged weight. Never guesses an
+  // amount on its own; if grade was Same, or Increase/Decrease with no
+  // amount recorded, the weight just carries over unchanged as before.
+  function nextWeight(h) {
+    const base = Number(h.weight);
+    if (h.grade === 1 && h.adjustAmount) return String(Math.max(0, base + Number(h.adjustAmount)));
+    if (h.grade === 3 && h.adjustAmount) return String(Math.max(0, base - Number(h.adjustAmount)));
+    return String(h.weight);
+  }
+
   function startSession(workoutId) {
     const w = workouts.find(x => x.id === workoutId);
     if (!w) return;
@@ -626,7 +649,7 @@
           name: ex.name,
           type,
           targetReps: ex.targetReps,
-          weight: (type === "weighted" && h && h.weight) ? String(h.weight) : "",
+          weight: (type === "weighted" && h && h.weight) ? nextWeight(h) : "",
           grade: null,
           sets: Array.from({ length: ex.sets }, (_, i) => (
             hasTarget ? String(ex.targetReps) : (h && h.sets && h.sets[i] !== undefined ? String(h.sets[i]) : "")
@@ -666,7 +689,9 @@
     let str = (h.type === "weighted" && h.weight !== "") ? `last: ${h.weight}×${vals}`
       : h.type === "timed" ? `last: ${vals}s`
       : `last: ${vals}`;
-    if (h.grade) str += " · " + GRADE_LABELS[h.grade].toLowerCase();
+    if (h.type === "weighted" && h.grade === 1 && h.adjustAmount) str += ` · +${h.adjustAmount} next`;
+    else if (h.type === "weighted" && h.grade === 3 && h.adjustAmount) str += ` · -${h.adjustAmount} next`;
+    else if (h.grade) str += " · " + GRADE_LABELS[h.grade].toLowerCase();
     return str;
   }
 
@@ -705,6 +730,18 @@
           <button class="gicon ${ex.grade === 3 ? "active" : ""}" data-grade="3">↓</button>
         </div>
       `;
+      if (ex.type === "weighted" && (ex.grade === 1 || ex.grade === 3)) {
+        const other = (ex.adjustAmount !== 5 && ex.adjustAmount !== 10 && ex.adjustAmount) ? ex.adjustAmount : "";
+        html += `
+          <div class="adjust-row">
+            <span class="adjust-label">by</span>
+            <button class="adjust-btn ${ex.adjustAmount === 5 ? "active" : ""}" data-adjust="5">5</button>
+            <button class="adjust-btn ${ex.adjustAmount === 10 ? "active" : ""}" data-adjust="10">10</button>
+            <input class="adjust-input" type="number" inputmode="decimal" placeholder="other" data-adjust-other="1" value="${other}">
+            <span class="unit">lb</span>
+          </div>
+        `;
+      }
       html += `</div></div>`;
     });
     html += `<button class="primary-btn" id="finishBtn">Finish workout</button>`;
@@ -749,7 +786,27 @@
       card.querySelectorAll("[data-grade]").forEach(btn => {
         btn.addEventListener("click", () => {
           const g = Number(btn.getAttribute("data-grade"));
-          draft.exercises[i].grade = draft.exercises[i].grade === g ? null : g;
+          const ex = draft.exercises[i];
+          ex.grade = ex.grade === g ? null : g;
+          // Increase/Decrease need an amount to actually adjust next time's
+          // weight by; default to 5 (overridable below) so picking a grade
+          // doesn't leave the adjustment silently unset. Same, or clearing
+          // the grade, has nothing to adjust.
+          if (ex.grade === 1 || ex.grade === 3) { if (!ex.adjustAmount) ex.adjustAmount = 5; }
+          else ex.adjustAmount = null;
+          saveDraft();
+          render();
+        });
+      });
+      const adjustOtherInput = card.querySelector("[data-adjust-other]");
+      if (adjustOtherInput) adjustOtherInput.addEventListener("input", () => {
+        const v = adjustOtherInput.value;
+        draft.exercises[i].adjustAmount = v === "" ? null : Number(v);
+        saveDraft();
+      });
+      card.querySelectorAll("[data-adjust]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          draft.exercises[i].adjustAmount = Number(btn.getAttribute("data-adjust"));
           saveDraft();
           render();
         });
@@ -793,8 +850,9 @@
       const sets = ex.sets.filter(v => v !== "").map(v => Number(v));
       if (sets.length === 0) return; // left blank (e.g. skipped this time) — don't touch history
       const weight = ex.type === "weighted" ? ex.weight : "";
-      history[normName(ex.name)] = { type: ex.type, weight, sets, grade: ex.grade, date };
-      loggedExercises.push({ name: ex.name, type: ex.type, weight, sets, grade: ex.grade });
+      const adjustAmount = ex.type === "weighted" ? ex.adjustAmount : null;
+      history[normName(ex.name)] = { type: ex.type, weight, sets, grade: ex.grade, adjustAmount, date };
+      loggedExercises.push({ name: ex.name, type: ex.type, weight, sets, grade: ex.grade, adjustAmount });
     });
     saveJSON(HISTORY_KEY, history);
 
@@ -817,11 +875,11 @@
 
   // ---------- export / backup ----------
   function exportCSV() {
-    const rows = [["date", "workout", "exercise", "type", "weight", "set", "value", "grade"]];
+    const rows = [["date", "workout", "exercise", "type", "weight", "set", "value", "grade", "adjust"]];
     sessions.forEach(s => {
       s.exercises.forEach(ex => {
         ex.sets.forEach((val, i) => {
-          rows.push([s.date, s.workoutName, ex.name, ex.type, ex.weight || "", i + 1, val, ex.grade || ""]);
+          rows.push([s.date, s.workoutName, ex.name, ex.type, ex.weight || "", i + 1, val, ex.grade || "", ex.adjustAmount || ""]);
         });
       });
     });
