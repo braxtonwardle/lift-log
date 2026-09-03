@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-title" content="Lift Log" />
 <meta name="theme-color" content="#0F1A2E" />
@@ -77,7 +77,7 @@
   .field-label { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; display: block; }
   .text-input, .num-input {
     width: 100%; background: var(--bg); border: 1px solid var(--line2); border-radius: 8px;
-    padding: 9px 10px; color: var(--ink); font-size: 14px; font-family: inherit;
+    padding: 9px 10px; color: var(--ink); font-size: 16px; font-family: inherit;
   }
 
   .builder-row { background: var(--panel); border-radius: 10px; padding: 12px; margin-bottom: 8px; }
@@ -100,7 +100,7 @@
   .sets-input { width: 64px; flex: none; text-align: center; }
   .type-select {
     background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; color: var(--muted);
-    font-size: 11.5px; padding: 5px 6px; font-family: inherit;
+    font-size: 16px; padding: 5px 6px; font-family: inherit;
   }
   .remove-row-btn {
     border: none; background: transparent; color: var(--muted2); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;
@@ -141,10 +141,10 @@
   .row2 { display: flex; align-items: center; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
   .wt-box, .val-box {
     background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; color: var(--ink);
-    font-size: 14.5px; text-align: center; height: 36px; font-family: inherit; padding: 0 4px;
+    font-size: 16px; text-align: center; height: 36px; font-family: inherit; padding: 0 4px;
   }
-  .wt-box { width: 54px; flex: none; }
-  .val-box { width: 40px; flex: none; }
+  .wt-box { width: 58px; flex: none; }
+  .val-box { width: 44px; flex: none; }
   .unit { color: var(--muted); font-size: 11px; flex: none; }
   .addset, .remset {
     border: none; background: transparent; color: var(--muted); font-size: 11.5px; cursor: pointer;
@@ -170,8 +170,8 @@
   }
   .adjust-btn.active { border-color: var(--gold); color: var(--gold); }
   .adjust-input {
-    width: 52px; background: var(--bg); border: 1px solid var(--line2); border-radius: 6px;
-    color: var(--ink); font-size: 12px; text-align: center; height: 28px; font-family: inherit; padding: 0 4px;
+    width: 58px; background: var(--bg); border: 1px solid var(--line2); border-radius: 6px;
+    color: var(--ink); font-size: 16px; text-align: center; height: 30px; font-family: inherit; padding: 0 4px;
   }
 
   .footer-actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
@@ -940,6 +940,15 @@
     document.querySelectorAll(".ac-list.open").forEach(list => {
       if (!list.parentElement.contains(e.target)) list.classList.remove("open");
     });
+  });
+
+  // Selects a number field's whole value on focus so tapping into a
+  // prefilled weight/reps box lets typing replace it immediately, instead
+  // of needing to manually clear it first. One delegated listener (rather
+  // than binding it per-input in every render function) so it keeps working
+  // regardless of how a field got re-rendered.
+  document.addEventListener("focusin", (e) => {
+    if (e.target.tagName === "INPUT" && e.target.type === "number") e.target.select();
   });
 
   render();
