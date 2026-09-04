@@ -803,6 +803,10 @@
         const v = adjustOtherInput.value;
         draft.exercises[i].adjustAmount = v === "" ? null : Number(v);
         saveDraft();
+        // No full render() here (typing would lose focus), so the 5/10
+        // buttons' stale "active" highlight from before "other" was used
+        // needs clearing directly instead of relying on a re-render.
+        card.querySelectorAll("[data-adjust]").forEach(btn => btn.classList.remove("active"));
       });
       card.querySelectorAll("[data-adjust]").forEach(btn => {
         btn.addEventListener("click", () => {
