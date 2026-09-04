@@ -173,6 +173,7 @@
     width: 58px; background: var(--bg); border: 1px solid var(--line2); border-radius: 6px;
     color: var(--ink); font-size: 16px; text-align: center; height: 30px; font-family: inherit; padding: 0 4px;
   }
+  .adjust-input.active { border-color: var(--gold); color: var(--gold); }
 
   .footer-actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
   .footer-btn {
@@ -737,7 +738,7 @@
             <span class="adjust-label">by</span>
             <button class="adjust-btn ${ex.adjustAmount === 5 ? "active" : ""}" data-adjust="5">5</button>
             <button class="adjust-btn ${ex.adjustAmount === 10 ? "active" : ""}" data-adjust="10">10</button>
-            <input class="adjust-input" type="number" inputmode="decimal" placeholder="other" data-adjust-other="1" value="${other}">
+            <input class="adjust-input${other !== "" ? " active" : ""}" type="number" inputmode="decimal" placeholder="other" data-adjust-other="1" value="${other}">
             <span class="unit">lb</span>
           </div>
         `;
@@ -803,10 +804,12 @@
         const v = adjustOtherInput.value;
         draft.exercises[i].adjustAmount = v === "" ? null : Number(v);
         saveDraft();
-        // No full render() here (typing would lose focus), so the 5/10
-        // buttons' stale "active" highlight from before "other" was used
-        // needs clearing directly instead of relying on a re-render.
+        // No full render() here (typing would lose focus), so both the 5/10
+        // buttons' stale "active" highlight and this field's own light-up
+        // need updating directly instead of waiting for a render that isn't
+        // coming.
         card.querySelectorAll("[data-adjust]").forEach(btn => btn.classList.remove("active"));
+        adjustOtherInput.classList.toggle("active", v !== "");
       });
       card.querySelectorAll("[data-adjust]").forEach(btn => {
         btn.addEventListener("click", () => {
