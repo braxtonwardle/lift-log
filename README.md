@@ -1,4 +1,4 @@
-# Lift Log
+# Weight For Me
 
 A small workout tracker: build reusable workout templates (e.g. "Workout A"), start a session, and log weight/reps per set with distinct input boxes — no spreadsheet cell-tapping.
 
