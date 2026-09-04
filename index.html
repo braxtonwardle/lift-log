@@ -71,7 +71,14 @@
 
   .add-btn {
     width: 100%; padding: 12px; border-radius: 10px; border: 1.5px dashed var(--line2);
-    background: transparent; color: var(--gold); font-size: 13.5px; cursor: pointer; font-family: inherit; margin-top: 4px;
+    background: transparent; color: var(--gold); font-size: 13.5px; cursor: pointer; font-family: inherit;
+  }
+  .home-actions-row { display: flex; gap: 8px; margin-top: 4px; }
+  .home-actions-row .add-btn { flex: 1; margin-top: 0; }
+  .icon-square-btn {
+    flex: none; width: 50px; border-radius: 10px; border: 1px solid var(--line2);
+    background: var(--panel); color: var(--ink); font-size: 19px; cursor: pointer; font-family: inherit;
+    display: flex; align-items: center; justify-content: center;
   }
 
   .field-label { color: var(--muted); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 6px; display: block; }
@@ -183,10 +190,6 @@
   .tiny { color: var(--muted2); font-size: 11px; margin-top: 10px; line-height: 1.4; }
   .empty-state { color: var(--muted2); font-size: 13px; text-align: center; padding: 28px 10px; line-height: 1.5; }
 
-  .progress-link {
-    width: 100%; padding: 11px; border-radius: 10px; border: 1px solid var(--gold);
-    background: transparent; color: var(--gold); font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 8px;
-  }
 
   .chart-wrap { background: var(--panel); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
   .chart-legend { display: flex; gap: 14px; margin-bottom: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
@@ -440,17 +443,13 @@
         `;
       });
     }
-    const bwLast = bwLastEntry();
     html += `
-      <div class="workout-card" id="bwCard">
-        <div class="wc-main">
-          <div class="wc-name">⚖️ Body Weight</div>
-          <div class="wc-meta">${bwLast ? escapeHTML(`Last: ${bwLast.weight} lb on ${bwLast.date}`) : "No entries yet"}</div>
-        </div>
+      <div class="home-actions-row">
+        <button class="add-btn" id="newWorkoutBtn">+ New workout</button>
+        <button class="icon-square-btn" id="bwBtn" title="Body Weight">⚖️</button>
+        <button class="icon-square-btn" id="progressBtn" title="Progress">📈</button>
       </div>
     `;
-    html += `<button class="add-btn" id="newWorkoutBtn">+ New workout</button>`;
-    html += `<button class="progress-link" id="progressBtn">📈 Progress</button>`;
     html += `
       <div class="footer-actions">
         <button class="footer-btn" id="exportBtn">Export CSV</button>
@@ -502,7 +501,7 @@
         }
       });
     });
-    document.getElementById("bwCard").addEventListener("click", () => { view = "bwlog"; render(); });
+    document.getElementById("bwBtn").addEventListener("click", () => { view = "bwlog"; render(); });
     document.getElementById("newWorkoutBtn").addEventListener("click", () => openBuilder(null));
     document.getElementById("progressBtn").addEventListener("click", () => { view = "progress"; render(); });
     document.getElementById("exportBtn").addEventListener("click", exportCSV);
