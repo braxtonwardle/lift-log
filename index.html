@@ -182,6 +182,20 @@
   }
   .tiny { color: var(--muted2); font-size: 11px; margin-top: 10px; line-height: 1.4; }
   .empty-state { color: var(--muted2); font-size: 13px; text-align: center; padding: 28px 10px; line-height: 1.5; }
+
+  .progress-link {
+    width: 100%; padding: 11px; border-radius: 10px; border: 1.5px dashed var(--line2);
+    background: transparent; color: var(--gold); font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 8px;
+  }
+
+  .chart-wrap { background: var(--panel); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .chart-legend { display: flex; gap: 14px; margin-bottom: 8px; font-size: 11px; color: var(--muted); flex-wrap: wrap; }
+  .chart-legend-item { display: flex; align-items: center; gap: 5px; }
+  .chart-legend-swatch { width: 14px; height: 0; border-top: 2px solid var(--gold); display: inline-block; }
+  .chart-legend-swatch.dashed { border-top-style: dashed; border-top-color: var(--muted2); }
+  .chart-point { cursor: pointer; }
+  .chart-detail { color: var(--ink); font-size: 12.5px; margin-top: 8px; min-height: 18px; }
+  .chart-axis-label { fill: var(--muted2); font-size: 9px; font-family: inherit; }
 </style>
 </head>
 <body>
@@ -194,6 +208,8 @@
   const SESSIONS_KEY = "ll_sessions_v1";
   const DRAFT_KEY = "ll_draft_v1";
   const LAST_BACKUP_KEY = "ll_lastBackupAt";
+  const BODYWEIGHT_KEY = "ll_bodyweight_v1";
+  const CHART_ORDER_KEY = "ll_chartorder_v1";
 
   function loadJSON(key, fallback) {
     try { const v = JSON.parse(localStorage.getItem(key)); return v === null || v === undefined ? fallback : v; }
@@ -205,6 +221,8 @@
   let history = loadJSON(HISTORY_KEY, {});     // { "name": {type, weight, sets:[value], grade, date} }
   let sessions = loadJSON(SESSIONS_KEY, []);   // [{id, date, workoutId, workoutName, exercises:[...]}]
   let draft = loadJSON(DRAFT_KEY, null);       // in-progress session, or null
+  let bodyweight = loadJSON(BODYWEIGHT_KEY, {}); // { "YYYY-MM-DD": weight }
+  let chartOrder = loadJSON(CHART_ORDER_KEY, []); // [exerciseName, ...] user-sorted, newly-seen ones append
 
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function todayKey() {
@@ -346,8 +364,10 @@
   // last time (e.g. via "Save & go back") — the home card for that workout
   // shows a "resume" state instead, so opening the app never jumps straight
   // past the menu into whatever you were last doing.
-  let view = "home"; // "home" | "builder" | "session"
+  let view = "home"; // "home" | "builder" | "session" | "bwlog" | "progress" | "chart"
   let builderState = null; // { id (or null for new), name, exercises:[{id,name,sets}] }
+  let chartTarget = null; // exercise name, or BODYWEIGHT_TARGET, for the "chart" view
+  const BODYWEIGHT_TARGET = "__bodyweight__";
 
   // ---------- rendering ----------
   const app = document.getElementById("app");
@@ -355,6 +375,9 @@
     if (view === "home") renderHome();
     else if (view === "builder") renderBuilder();
     else if (view === "session") renderSession();
+    else if (view === "bwlog") renderBodyweightLog();
+    else if (view === "progress") renderProgressList();
+    else if (view === "chart") renderChart();
   }
 
   function formatBackupStatus(iso) {
@@ -382,11 +405,27 @@
   }
 
   // ---------- HOME ----------
+  function bwLastEntry() {
+    const dates = Object.keys(bodyweight).sort();
+    if (dates.length === 0) return null;
+    const d = dates[dates.length - 1];
+    return { date: d, weight: bodyweight[d] };
+  }
+
   function renderHome() {
     let html = `
       <div class="app-header">
         <h1 class="app-title">Lift Log</h1>
         <div class="app-sub">Pick a workout to start logging.</div>
+      </div>
+    `;
+    const bwLast = bwLastEntry();
+    html += `
+      <div class="workout-card" id="bwCard">
+        <div class="wc-main">
+          <div class="wc-name">⚖️ Body Weight</div>
+          <div class="wc-meta">${bwLast ? escapeHTML(`Last: ${bwLast.weight} lb on ${bwLast.date}`) : "No entries yet"}</div>
+        </div>
       </div>
     `;
     if (workouts.length === 0) {
@@ -411,6 +450,7 @@
       });
     }
     html += `<button class="add-btn" id="newWorkoutBtn">+ New workout</button>`;
+    html += `<button class="progress-link" id="progressBtn">📈 Progress</button>`;
     html += `
       <div class="footer-actions">
         <button class="footer-btn" id="exportBtn">Export CSV</button>
@@ -462,7 +502,9 @@
         }
       });
     });
+    document.getElementById("bwCard").addEventListener("click", () => { view = "bwlog"; render(); });
     document.getElementById("newWorkoutBtn").addEventListener("click", () => openBuilder(null));
+    document.getElementById("progressBtn").addEventListener("click", () => { view = "progress"; render(); });
     document.getElementById("exportBtn").addEventListener("click", exportCSV);
     document.getElementById("backupBtn").addEventListener("click", downloadBackup);
     document.getElementById("restoreBtn").addEventListener("click", () => document.getElementById("restoreInput").click());
@@ -880,6 +922,245 @@
     render();
   }
 
+  // ---------- BODYWEIGHT LOG ----------
+  function renderBodyweightLog() {
+    const last = bwLastEntry();
+    const html = `
+      <div class="nav-row">
+        <button class="nav-btn" id="backBtn">‹</button>
+        <div class="nav-title">Body Weight</div>
+      </div>
+      <div class="panel">
+        <span class="field-label">Today's weight</span>
+        <input class="text-input" id="bwInput" type="number" inputmode="decimal" placeholder="e.g. 178.5" value="${last ? last.weight : ""}">
+      </div>
+      <button class="primary-btn" id="bwSaveBtn" style="margin-top:10px;">Save</button>
+      <button class="ghost-btn" id="bwBackBtn">Cancel</button>
+    `;
+    app.innerHTML = html;
+    document.getElementById("backBtn").addEventListener("click", () => { view = "home"; render(); });
+    document.getElementById("bwBackBtn").addEventListener("click", () => { view = "home"; render(); });
+    document.getElementById("bwSaveBtn").addEventListener("click", () => {
+      const v = document.getElementById("bwInput").value;
+      if (v === "" || isNaN(Number(v))) { alert("Enter a weight."); return; }
+      bodyweight[todayKey()] = Number(v);
+      saveJSON(BODYWEIGHT_KEY, bodyweight);
+      view = "home";
+      render();
+    });
+  }
+
+  // ---------- PROGRESS ----------
+  // Only exercises that actually have logged sessions -- charting a
+  // template-only exercise with no data would just be an empty chart.
+  function chartableExerciseNames() {
+    const seen = new Set();
+    const names = [];
+    sessions.forEach(s => s.exercises.forEach(ex => {
+      const key = normName(ex.name);
+      if (!seen.has(key)) { seen.add(key); names.push(ex.name); }
+    }));
+    return names;
+  }
+
+  // User-sorted order (chartOrder), with any exercise not yet sorted
+  // appended at the end in first-logged order, same growth pattern as the
+  // workout list's manual ordering.
+  function orderedChartList() {
+    const known = chartableExerciseNames();
+    const knownByNorm = {};
+    known.forEach(n => { knownByNorm[normName(n)] = n; });
+    const ordered = [];
+    const used = new Set();
+    chartOrder.forEach(n => {
+      const norm = normName(n);
+      if (knownByNorm[norm] && !used.has(norm)) { ordered.push(knownByNorm[norm]); used.add(norm); }
+    });
+    known.forEach(n => {
+      const norm = normName(n);
+      if (!used.has(norm)) { ordered.push(n); used.add(norm); }
+    });
+    return ordered;
+  }
+
+  function renderProgressList() {
+    const list = orderedChartList();
+    const bwCount = Object.keys(bodyweight).length;
+    let html = `
+      <div class="nav-row">
+        <button class="nav-btn" id="backBtn">‹</button>
+        <div class="nav-title">Progress</div>
+      </div>
+      <div class="workout-card" data-chart="${BODYWEIGHT_TARGET}">
+        <div class="wc-main">
+          <div class="wc-name">⚖️ Body Weight</div>
+          <div class="wc-meta">${bwCount} entr${bwCount === 1 ? "y" : "ies"}</div>
+        </div>
+      </div>
+    `;
+    if (list.length === 0) {
+      html += `<div class="empty-state">No exercises logged yet.<br>Finish a workout to start tracking progress.</div>`;
+    } else {
+      list.forEach((name, idx) => {
+        html += `
+          <div class="workout-card" data-chart="${escapeHTML(name)}">
+            <div class="wc-main"><div class="wc-name">${escapeHTML(name)}</div></div>
+            <div class="wc-actions">
+              <button class="icon-btn" data-chart-up="${escapeHTML(name)}" ${idx === 0 ? "disabled" : ""}>↑</button>
+              <button class="icon-btn" data-chart-down="${escapeHTML(name)}" ${idx === list.length - 1 ? "disabled" : ""}>↓</button>
+            </div>
+          </div>
+        `;
+      });
+    }
+    app.innerHTML = html;
+
+    document.getElementById("backBtn").addEventListener("click", () => { view = "home"; render(); });
+    app.querySelectorAll("[data-chart]").forEach(el => {
+      el.querySelector(".wc-main").addEventListener("click", () => {
+        chartTarget = el.getAttribute("data-chart");
+        view = "chart";
+        render();
+      });
+    });
+    function reorder(name, dir) {
+      const ordered = orderedChartList();
+      const idx = ordered.findIndex(n => normName(n) === normName(name));
+      const swapWith = idx + dir;
+      if (swapWith < 0 || swapWith >= ordered.length) return;
+      [ordered[idx], ordered[swapWith]] = [ordered[swapWith], ordered[idx]];
+      chartOrder = ordered;
+      saveJSON(CHART_ORDER_KEY, chartOrder);
+      render();
+    }
+    app.querySelectorAll("[data-chart-up]").forEach(el => {
+      el.addEventListener("click", (e) => { e.stopPropagation(); reorder(el.getAttribute("data-chart-up"), -1); });
+    });
+    app.querySelectorAll("[data-chart-down]").forEach(el => {
+      el.addEventListener("click", (e) => { e.stopPropagation(); reorder(el.getAttribute("data-chart-down"), 1); });
+    });
+  }
+
+  function chartDataForExercise(name) {
+    const norm = normName(name);
+    const points = [];
+    sessions.forEach(s => {
+      const ex = s.exercises.find(e => normName(e.name) === norm);
+      if (!ex || !ex.sets || ex.sets.length === 0) return;
+      points.push({ date: s.date, type: ex.type, weight: ex.weight, sets: ex.sets });
+    });
+    points.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+    return points;
+  }
+
+  function chartDataForBodyweight() {
+    return Object.keys(bodyweight).sort().map(d => ({ date: d, weight: bodyweight[d] }));
+  }
+
+  // Epley formula. Deliberately not used to drive anything automatic (like
+  // the weight prefill) -- purely a secondary, clearly-labeled reference
+  // line, since it's an estimate that gets unreliable above ~12 reps.
+  function estimate1RM(weight, reps) { return weight * (1 + reps / 30); }
+
+  function buildChartSVG(points, hasE1RM) {
+    const W = 340, H = 200, padL = 30, padR = 8, padT = 10, padB = 20;
+    const plotW = W - padL - padR, plotH = H - padT - padB;
+
+    const dateNums = points.map(p => new Date(p.date).getTime());
+    const minDate = Math.min(...dateNums), maxDate = Math.max(...dateNums);
+    const dateSpan = maxDate - minDate || 1;
+
+    const yVals = points.map(p => p.y);
+    if (hasE1RM) points.forEach(p => { if (p.e1rm) yVals.push(p.e1rm); });
+    let minY = Math.min(...yVals), maxY = Math.max(...yVals);
+    if (minY === maxY) { minY -= 1; maxY += 1; }
+    const yPad = (maxY - minY) * 0.12;
+    minY -= yPad; maxY += yPad;
+    const ySpan = maxY - minY || 1;
+
+    const xPos = (date) => padL + ((new Date(date).getTime() - minDate) / dateSpan) * plotW;
+    const yPos = (val) => padT + plotH - ((val - minY) / ySpan) * plotH;
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; display:block;">`;
+    svg += `<text class="chart-axis-label" x="${padL}" y="${padT + 4}">${Math.round(maxY)}</text>`;
+    svg += `<text class="chart-axis-label" x="${padL}" y="${padT + plotH}">${Math.round(minY)}</text>`;
+    svg += `<text class="chart-axis-label" x="${padL}" y="${H - 4}">${escapeHTML(points[0].date.slice(5))}</text>`;
+    svg += `<text class="chart-axis-label" x="${W - padR}" y="${H - 4}" text-anchor="end">${escapeHTML(points[points.length - 1].date.slice(5))}</text>`;
+
+    if (hasE1RM) {
+      const e1rmPts = points.filter(p => p.e1rm).map(p => `${xPos(p.date)},${yPos(p.e1rm)}`).join(" ");
+      svg += `<polyline points="${e1rmPts}" fill="none" style="stroke:var(--muted2); stroke-width:1.5px; stroke-dasharray:4,3;" />`;
+    }
+    const solidPts = points.map(p => `${xPos(p.date)},${yPos(p.y)}`).join(" ");
+    svg += `<polyline points="${solidPts}" fill="none" style="stroke:var(--gold); stroke-width:2px;" />`;
+    points.forEach((p, i) => {
+      svg += `<circle class="chart-point" data-point-idx="${i}" cx="${xPos(p.date)}" cy="${yPos(p.y)}" r="8" fill="transparent" />`;
+      svg += `<circle cx="${xPos(p.date)}" cy="${yPos(p.y)}" r="3" style="fill:var(--gold); pointer-events:none;" />`;
+    });
+    svg += `</svg>`;
+
+    let legend = `<div class="chart-legend"><div class="chart-legend-item"><span class="chart-legend-swatch"></span>Logged</div>`;
+    if (hasE1RM) legend += `<div class="chart-legend-item"><span class="chart-legend-swatch dashed"></span>Est. 1RM</div>`;
+    legend += `</div>`;
+
+    return `<div class="chart-wrap">${legend}${svg}</div>`;
+  }
+
+  function pointDetailText(p) {
+    let text = `${p.date} — ${p.label}`;
+    if (p.e1rm) text += ` · e1RM ~${p.e1rm}`;
+    return text;
+  }
+
+  function renderChart() {
+    const isBW = chartTarget === BODYWEIGHT_TARGET;
+    const title = isBW ? "Body Weight" : chartTarget;
+    let html = `
+      <div class="nav-row">
+        <button class="nav-btn" id="backBtn">‹</button>
+        <div class="nav-title">${escapeHTML(title)}</div>
+      </div>
+    `;
+
+    let points, hasE1RM = false;
+    if (isBW) {
+      points = chartDataForBodyweight().map(p => ({ date: p.date, y: p.weight, label: `${p.weight} lb`, e1rm: null }));
+    } else {
+      const raw = chartDataForExercise(chartTarget);
+      hasE1RM = raw.length > 0 && raw[0].type === "weighted";
+      points = raw.map(p => {
+        if (p.type === "weighted") {
+          const reps = p.sets[0];
+          return {
+            date: p.date, y: Number(p.weight), label: `${p.weight}×${p.sets.join(",")}`,
+            e1rm: (reps && reps <= 12) ? Math.round(estimate1RM(Number(p.weight), reps)) : null,
+          };
+        }
+        return { date: p.date, y: p.sets[0], label: p.type === "timed" ? `${p.sets.join(",")}s` : p.sets.join(","), e1rm: null };
+      });
+    }
+
+    if (points.length === 0) {
+      html += `<div class="empty-state">No history logged yet.</div>`;
+      app.innerHTML = html;
+      document.getElementById("backBtn").addEventListener("click", () => { view = "progress"; render(); });
+      return;
+    }
+
+    html += buildChartSVG(points, hasE1RM);
+    const lastPoint = points[points.length - 1];
+    html += `<div class="chart-detail" id="chartDetail">${escapeHTML(pointDetailText(lastPoint))}</div>`;
+
+    app.innerHTML = html;
+    document.getElementById("backBtn").addEventListener("click", () => { view = "progress"; render(); });
+    app.querySelectorAll("[data-point-idx]").forEach(el => {
+      el.addEventListener("click", () => {
+        const p = points[Number(el.getAttribute("data-point-idx"))];
+        document.getElementById("chartDetail").textContent = pointDetailText(p);
+      });
+    });
+  }
+
   // ---------- export / backup ----------
   function exportCSV() {
     const rows = [["date", "workout", "exercise", "type", "weight", "set", "value", "grade", "adjust"]];
@@ -900,7 +1181,7 @@
   }
 
   function downloadBackup() {
-    const data = { workouts, history, sessions, exportedAt: new Date().toISOString() };
+    const data = { workouts, history, sessions, bodyweight, chartOrder, exportedAt: new Date().toISOString() };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -922,9 +1203,13 @@
         workouts = data.workouts || [];
         history = data.history || {};
         sessions = data.sessions || [];
+        bodyweight = data.bodyweight || {};
+        chartOrder = data.chartOrder || [];
         saveJSON(WORKOUTS_KEY, workouts);
         saveJSON(HISTORY_KEY, history);
         saveJSON(SESSIONS_KEY, sessions);
+        saveJSON(BODYWEIGHT_KEY, bodyweight);
+        saveJSON(CHART_ORDER_KEY, chartOrder);
         runMigrations();
         render();
       } catch (err) {
@@ -971,15 +1256,21 @@
     const freshHistory = loadJSON(HISTORY_KEY, {});
     const freshSessions = loadJSON(SESSIONS_KEY, []);
     const freshDraft = loadJSON(DRAFT_KEY, null);
+    const freshBodyweight = loadJSON(BODYWEIGHT_KEY, {});
+    const freshChartOrder = loadJSON(CHART_ORDER_KEY, []);
     const changed = JSON.stringify(freshDraft) !== JSON.stringify(draft)
       || JSON.stringify(freshWorkouts) !== JSON.stringify(workouts)
       || JSON.stringify(freshHistory) !== JSON.stringify(history)
-      || JSON.stringify(freshSessions) !== JSON.stringify(sessions);
+      || JSON.stringify(freshSessions) !== JSON.stringify(sessions)
+      || JSON.stringify(freshBodyweight) !== JSON.stringify(bodyweight)
+      || JSON.stringify(freshChartOrder) !== JSON.stringify(chartOrder);
     if (!changed) return;
     workouts = freshWorkouts;
     history = freshHistory;
     sessions = freshSessions;
     draft = freshDraft;
+    bodyweight = freshBodyweight;
+    chartOrder = freshChartOrder;
     runMigrations();
     if (view === "session" && !draft) view = "home";
     render();
