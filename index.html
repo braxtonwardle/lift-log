@@ -184,7 +184,7 @@
   .empty-state { color: var(--muted2); font-size: 13px; text-align: center; padding: 28px 10px; line-height: 1.5; }
 
   .progress-link {
-    width: 100%; padding: 11px; border-radius: 10px; border: 1.5px dashed var(--line2);
+    width: 100%; padding: 11px; border-radius: 10px; border: 1px solid var(--gold);
     background: transparent; color: var(--gold); font-size: 13px; cursor: pointer; font-family: inherit; margin-top: 8px;
   }
 
@@ -419,15 +419,6 @@
         <div class="app-sub">Pick a workout to start logging.</div>
       </div>
     `;
-    const bwLast = bwLastEntry();
-    html += `
-      <div class="workout-card" id="bwCard">
-        <div class="wc-main">
-          <div class="wc-name">⚖️ Body Weight</div>
-          <div class="wc-meta">${bwLast ? escapeHTML(`Last: ${bwLast.weight} lb on ${bwLast.date}`) : "No entries yet"}</div>
-        </div>
-      </div>
-    `;
     if (workouts.length === 0) {
       html += `<div class="empty-state">No workouts yet.<br>Build one to get started.</div>`;
     } else {
@@ -449,6 +440,15 @@
         `;
       });
     }
+    const bwLast = bwLastEntry();
+    html += `
+      <div class="workout-card" id="bwCard">
+        <div class="wc-main">
+          <div class="wc-name">⚖️ Body Weight</div>
+          <div class="wc-meta">${bwLast ? escapeHTML(`Last: ${bwLast.weight} lb on ${bwLast.date}`) : "No entries yet"}</div>
+        </div>
+      </div>
+    `;
     html += `<button class="add-btn" id="newWorkoutBtn">+ New workout</button>`;
     html += `<button class="progress-link" id="progressBtn">📈 Progress</button>`;
     html += `
