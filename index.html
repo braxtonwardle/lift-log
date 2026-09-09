@@ -95,6 +95,7 @@
   .builder-row { background: var(--panel); border-radius: 10px; padding: 12px; margin-bottom: 8px; }
   .builder-row-top { display: flex; gap: 8px; margin-bottom: 8px; align-items: flex-end; }
   .builder-row-bottom { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .builder-row-actions { display: flex; align-items: center; gap: 4px; }
   .name-field { flex: 1; position: relative; }
   .ac-list {
     display: none; position: absolute; left: 0; right: 0; top: 100%; margin-top: 4px;
@@ -624,7 +625,11 @@
               <option value="bodyweight" ${ex.type === "bodyweight" ? "selected" : ""}>Bodyweight</option>
               <option value="timed" ${ex.type === "timed" ? "selected" : ""}>Timed (seconds)</option>
             </select>
-            <button class="remove-row-btn" data-remove="${i}">remove</button>
+            <div class="builder-row-actions">
+              <button class="icon-btn" data-ex-move-up="${i}" ${i === 0 ? "disabled" : ""}>↑</button>
+              <button class="icon-btn" data-ex-move-down="${i}" ${i === builderState.exercises.length - 1 ? "disabled" : ""}>↓</button>
+              <button class="remove-row-btn" data-remove="${i}">remove</button>
+            </div>
           </div>
         </div>
       `;
@@ -657,6 +662,26 @@
         const idx = Number(btn.getAttribute("data-remove"));
         builderState.exercises.splice(idx, 1);
         render();
+      });
+    });
+    app.querySelectorAll("[data-ex-move-up]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.getAttribute("data-ex-move-up"));
+        if (idx > 0) {
+          const ex = builderState.exercises;
+          [ex[idx - 1], ex[idx]] = [ex[idx], ex[idx - 1]];
+          render();
+        }
+      });
+    });
+    app.querySelectorAll("[data-ex-move-down]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const idx = Number(btn.getAttribute("data-ex-move-down"));
+        const ex = builderState.exercises;
+        if (idx < ex.length - 1) {
+          [ex[idx], ex[idx + 1]] = [ex[idx + 1], ex[idx]];
+          render();
+        }
       });
     });
     document.getElementById("addExBtn").addEventListener("click", () => {
