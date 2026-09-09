@@ -145,10 +145,16 @@
   .ex-card.active { filter: brightness(1); border-left-color: var(--gold); }
   .ex-header { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
   .ex-name { color: var(--ink); font-size: 14.5px; font-weight: 700; flex: none; }
+  .ex-header-right { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
   .ex-last {
     color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; min-width: 0;
   }
+  .ex-remove-btn {
+    border: none; background: transparent; color: var(--muted2); font-size: 13px; cursor: pointer;
+    padding: 2px 2px; flex: none; line-height: 1; opacity: .75;
+  }
+  .ex-remove-btn:active { opacity: 1; }
 
   .row2 { display: flex; align-items: center; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
   .wt-box, .val-box {
@@ -381,6 +387,7 @@
   // past the menu into whatever you were last doing.
   let view = "home"; // "home" | "builder" | "session" | "bwlog" | "progress" | "chart"
   let builderState = null; // { id (or null for new), name, exercises:[{id,name,sets}] }
+  let sessionAddState = null; // { name, sets, type } while the mid-session "add exercise" form is open, else null
   let chartTarget = null; // exercise name, or BODYWEIGHT_TARGET, for the "chart" view
   const BODYWEIGHT_TARGET = "__bodyweight__";
 
@@ -551,6 +558,32 @@
     return Object.values(byNorm);
   }
 
+  // Custom suggestion dropdown instead of a native <datalist> -- iOS Safari
+  // has long had unreliable/no picker UI for input[list] on text fields,
+  // even though it works fine on desktop browsers. Shared between the
+  // workout builder and the mid-session "add exercise" form.
+  function wireNameAutocomplete(nameInput, acList, onSelect) {
+    function updateSuggestions() {
+      const q = nameInput.value.trim().toLowerCase();
+      const matches = knownExerciseNames()
+        .filter(n => n.toLowerCase() !== q)
+        .filter(n => !q || n.toLowerCase().includes(q));
+      if (matches.length === 0) { acList.classList.remove("open"); acList.innerHTML = ""; return; }
+      acList.innerHTML = matches.map(n => `<button type="button" class="ac-item">${escapeHTML(n)}</button>`).join("");
+      acList.classList.add("open");
+    }
+    nameInput.addEventListener("focus", updateSuggestions);
+    nameInput.addEventListener("input", updateSuggestions);
+    acList.addEventListener("click", (e) => {
+      const btn = e.target.closest(".ac-item");
+      if (!btn) return;
+      nameInput.value = btn.textContent;
+      onSelect(btn.textContent);
+      acList.classList.remove("open");
+      nameInput.focus();
+    });
+  }
+
   function renderBuilder() {
     const isEdit = !!builderState.id;
     let html = `
@@ -610,29 +643,8 @@
         });
       });
 
-      // Custom suggestion dropdown instead of a native <datalist> -- iOS
-      // Safari has long had unreliable/no picker UI for input[list] on text
-      // fields, even though it works fine on desktop browsers.
-      const nameInput = row.querySelector(".ex-name-input");
-      const acList = row.querySelector(".ac-list");
-      function updateSuggestions() {
-        const q = nameInput.value.trim().toLowerCase();
-        const matches = knownExerciseNames()
-          .filter(n => n.toLowerCase() !== q)
-          .filter(n => !q || n.toLowerCase().includes(q));
-        if (matches.length === 0) { acList.classList.remove("open"); acList.innerHTML = ""; return; }
-        acList.innerHTML = matches.map(n => `<button type="button" class="ac-item">${escapeHTML(n)}</button>`).join("");
-        acList.classList.add("open");
-      }
-      nameInput.addEventListener("focus", updateSuggestions);
-      nameInput.addEventListener("input", updateSuggestions);
-      acList.addEventListener("click", (e) => {
-        const btn = e.target.closest(".ac-item");
-        if (!btn) return;
-        nameInput.value = btn.textContent;
-        builderState.exercises[idx].name = btn.textContent;
-        acList.classList.remove("open");
-        nameInput.focus();
+      wireNameAutocomplete(row.querySelector(".ex-name-input"), row.querySelector(".ac-list"), name => {
+        builderState.exercises[idx].name = name;
       });
     });
     app.querySelectorAll("[data-remove]").forEach(btn => {
@@ -682,9 +694,30 @@
     return String(h.weight);
   }
 
+  // Builds a draft-shaped session exercise entry from a template-like
+  // {name, type, targetReps, sets} object, prefilling weight/reps from
+  // history the same way whether it came from the workout template at
+  // session start or was added ad hoc mid-session.
+  function buildSessionExercise(ex) {
+    const h = history[normName(ex.name)];
+    const type = ex.type || "weighted";
+    const hasTarget = type !== "timed" && ex.targetReps !== undefined && ex.targetReps !== null && ex.targetReps !== "";
+    return {
+      name: ex.name,
+      type,
+      targetReps: ex.targetReps,
+      weight: (type === "weighted" && h && h.weight) ? nextWeight(h) : "",
+      grade: null,
+      sets: Array.from({ length: ex.sets }, (_, i) => (
+        hasTarget ? String(ex.targetReps) : (h && h.sets && h.sets[i] !== undefined ? String(h.sets[i]) : "")
+      )),
+    };
+  }
+
   function startSession(workoutId) {
     const w = workouts.find(x => x.id === workoutId);
     if (!w) return;
+    sessionAddState = null;
     // A draft only resumes if it was explicitly kept (via "Save & go back" or
     // by having been graded) -- see saveDraftAndGoHome/goBackFromSession. A
     // leftover never-saved draft (e.g. the tab just got closed mid-peek) is
@@ -698,21 +731,7 @@
       workoutId: w.id,
       workoutName: w.name,
       saved: false,
-      exercises: w.exercises.map(ex => {
-        const h = history[normName(ex.name)];
-        const type = ex.type || "weighted";
-        const hasTarget = type !== "timed" && ex.targetReps !== undefined && ex.targetReps !== null && ex.targetReps !== "";
-        return {
-          name: ex.name,
-          type,
-          targetReps: ex.targetReps,
-          weight: (type === "weighted" && h && h.weight) ? nextWeight(h) : "",
-          grade: null,
-          sets: Array.from({ length: ex.sets }, (_, i) => (
-            hasTarget ? String(ex.targetReps) : (h && h.sets && h.sets[i] !== undefined ? String(h.sets[i]) : "")
-          )),
-        };
-      }),
+      exercises: w.exercises.map(buildSessionExercise),
     };
     saveJSON(DRAFT_KEY, draft);
     view = "session";
@@ -768,7 +787,7 @@
     draft.exercises.forEach((ex, i) => {
       const cardState = isGraded(ex) ? "done" : (i === activeIdx ? "active" : "");
       html += `<div class="ex-card${cardState ? " " + cardState : ""}" data-exidx="${i}">`;
-      html += `<div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span><span class="ex-last">${escapeHTML(lastNoteFor(ex.name))}</span></div>`;
+      html += `<div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span><div class="ex-header-right"><span class="ex-last">${escapeHTML(lastNoteFor(ex.name))}</span><button class="ex-remove-btn" data-remove-ex="1" title="Remove from this session">✕</button></div></div>`;
       html += `<div class="row2">`;
       if (ex.type === "weighted") {
         html += `<input class="wt-box" type="number" inputmode="decimal" placeholder="wt" data-weight-field="1" value="${escapeHTML(ex.weight)}"><span class="unit">lb</span>`;
@@ -801,6 +820,34 @@
       }
       html += `</div></div>`;
     });
+    if (sessionAddState) {
+      html += `
+        <div class="builder-row">
+          <div class="builder-row-top">
+            <div class="name-field">
+              <span class="mini-label">Exercise name</span>
+              <input class="text-input ex-name-input" id="addExName" type="text" placeholder="e.g. Bike ride" value="${escapeHTML(sessionAddState.name)}" autocomplete="off">
+              <div class="ac-list" id="addExAcList"></div>
+            </div>
+            <div class="sets-field">
+              <span class="mini-label">Sets</span>
+              <input class="num-input sets-input" id="addExSets" type="number" min="1" max="10" value="${sessionAddState.sets}">
+            </div>
+          </div>
+          <div class="builder-row-bottom">
+            <select class="type-select" id="addExType">
+              <option value="weighted" ${sessionAddState.type === "weighted" ? "selected" : ""}>Weighted</option>
+              <option value="bodyweight" ${sessionAddState.type === "bodyweight" ? "selected" : ""}>Bodyweight</option>
+              <option value="timed" ${sessionAddState.type === "timed" ? "selected" : ""}>Timed (seconds)</option>
+            </select>
+            <button class="remove-row-btn" id="addExCancelBtn">cancel</button>
+          </div>
+        </div>
+        <button class="ghost-btn" id="addExConfirmBtn" style="margin-bottom:10px;">Add to this session</button>
+      `;
+    } else {
+      html += `<button class="ghost-btn" id="sessionAddExBtn" style="margin-bottom:10px;">+ Add exercise</button>`;
+    }
     html += `<button class="primary-btn" id="finishBtn">Finish workout</button>`;
     html += `<button class="ghost-btn" id="backHomeBtn">Save &amp; go back (resume later)</button>`;
     html += `<button class="discard-btn" id="discardBtn">Discard this session</button>`;
@@ -812,8 +859,40 @@
     document.getElementById("discardBtn").addEventListener("click", discardDraft);
     updateSessionProgress();
 
+    if (sessionAddState) {
+      document.getElementById("addExName").addEventListener("input", e => { sessionAddState.name = e.target.value; });
+      document.getElementById("addExSets").addEventListener("input", e => {
+        sessionAddState.sets = Math.max(1, Math.min(10, Number(e.target.value) || 1));
+      });
+      document.getElementById("addExType").addEventListener("change", e => { sessionAddState.type = e.target.value; });
+      document.getElementById("addExCancelBtn").addEventListener("click", () => { sessionAddState = null; render(); });
+      document.getElementById("addExConfirmBtn").addEventListener("click", () => {
+        const name = sessionAddState.name.trim();
+        if (!name) { alert("Give the exercise a name."); return; }
+        draft.exercises.push(buildSessionExercise({ name, type: sessionAddState.type, targetReps: "", sets: sessionAddState.sets }));
+        saveDraft();
+        sessionAddState = null;
+        render();
+      });
+      wireNameAutocomplete(document.getElementById("addExName"), document.getElementById("addExAcList"), name => {
+        sessionAddState.name = name;
+      });
+    } else {
+      document.getElementById("sessionAddExBtn").addEventListener("click", () => {
+        sessionAddState = { name: "", sets: 3, type: "weighted" };
+        render();
+      });
+    }
+
     app.querySelectorAll(".ex-card").forEach(card => {
       const i = Number(card.getAttribute("data-exidx"));
+      card.querySelector("[data-remove-ex]").addEventListener("click", () => {
+        const ex = draft.exercises[i];
+        if (!confirm(`Remove "${ex.name}" from this session?`)) return;
+        draft.exercises.splice(i, 1);
+        saveDraft();
+        render();
+      });
       const weightInput = card.querySelector("[data-weight-field]");
       if (weightInput) weightInput.addEventListener("input", () => {
         draft.exercises[i].weight = weightInput.value;
@@ -881,6 +960,7 @@
   function saveDraftAndGoHome() {
     if (draft) draft.saved = true;
     saveDraft();
+    sessionAddState = null;
     view = "home";
     render();
   }
@@ -894,6 +974,7 @@
       draft = null;
       localStorage.removeItem(DRAFT_KEY);
     }
+    sessionAddState = null;
     view = "home";
     render();
   }
@@ -902,6 +983,7 @@
     if (!confirm("Discard this session? Anything entered here will be lost — history from past finished workouts is unaffected.")) return;
     draft = null;
     localStorage.removeItem(DRAFT_KEY);
+    sessionAddState = null;
     view = "home";
     render();
   }
@@ -932,6 +1014,7 @@
 
     draft = null;
     localStorage.removeItem(DRAFT_KEY);
+    sessionAddState = null;
     view = "home";
     render();
   }
