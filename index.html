@@ -117,6 +117,11 @@
   .remove-row-btn {
     border: none; background: transparent; color: var(--muted2); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;
   }
+  .persist-check {
+    display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px;
+    margin-top: 10px; cursor: pointer;
+  }
+  .persist-check input { flex: none; }
 
   .primary-btn {
     width: 100%; padding: 13px; border-radius: 10px; border: none;
@@ -842,6 +847,10 @@
             </select>
             <button class="remove-row-btn" id="addExCancelBtn">cancel</button>
           </div>
+          <label class="persist-check">
+            <input type="checkbox" id="addExPersist" ${sessionAddState.persist ? "checked" : ""}>
+            Also add to "${escapeHTML(draft.workoutName)}" for next time
+          </label>
         </div>
         <button class="ghost-btn" id="addExConfirmBtn" style="margin-bottom:10px;">Add to this session</button>
       `;
@@ -865,12 +874,21 @@
         sessionAddState.sets = Math.max(1, Math.min(10, Number(e.target.value) || 1));
       });
       document.getElementById("addExType").addEventListener("change", e => { sessionAddState.type = e.target.value; });
+      document.getElementById("addExPersist").addEventListener("change", e => { sessionAddState.persist = e.target.checked; });
       document.getElementById("addExCancelBtn").addEventListener("click", () => { sessionAddState = null; render(); });
       document.getElementById("addExConfirmBtn").addEventListener("click", () => {
         const name = sessionAddState.name.trim();
         if (!name) { alert("Give the exercise a name."); return; }
-        draft.exercises.push(buildSessionExercise({ name, type: sessionAddState.type, targetReps: "", sets: sessionAddState.sets }));
+        const tmpl = { name, type: sessionAddState.type, targetReps: "", sets: sessionAddState.sets };
+        draft.exercises.push(buildSessionExercise(tmpl));
         saveDraft();
+        if (sessionAddState.persist) {
+          const w = workouts.find(x => x.id === draft.workoutId);
+          if (w) {
+            w.exercises.push({ id: uid(), ...tmpl });
+            saveJSON(WORKOUTS_KEY, workouts);
+          }
+        }
         sessionAddState = null;
         render();
       });
@@ -879,7 +897,7 @@
       });
     } else {
       document.getElementById("sessionAddExBtn").addEventListener("click", () => {
-        sessionAddState = { name: "", sets: 3, type: "weighted" };
+        sessionAddState = { name: "", sets: 3, type: "weighted", persist: false };
         render();
       });
     }
@@ -891,6 +909,12 @@
         if (!confirm(`Remove "${ex.name}" from this session?`)) return;
         draft.exercises.splice(i, 1);
         saveDraft();
+        const w = workouts.find(x => x.id === draft.workoutId);
+        const inTemplate = w && w.exercises.some(e => normName(e.name) === normName(ex.name));
+        if (inTemplate && confirm(`Also remove "${ex.name}" from the "${draft.workoutName}" workout so it stops showing up next time?`)) {
+          w.exercises = w.exercises.filter(e => normName(e.name) !== normName(ex.name));
+          saveJSON(WORKOUTS_KEY, workouts);
+        }
         render();
       });
       const weightInput = card.querySelector("[data-weight-field]");
