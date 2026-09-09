@@ -156,11 +156,12 @@
     color: var(--muted); font-size: 10.5px; white-space: nowrap; overflow: hidden;
     text-overflow: ellipsis; min-width: 0;
   }
-  .ex-remove-btn {
+  .ex-remove-btn, .ex-move-btn {
     border: none; background: transparent; color: var(--muted2); font-size: 13px; cursor: pointer;
     padding: 2px 2px; flex: none; line-height: 1; opacity: .75;
   }
-  .ex-remove-btn:active { opacity: 1; }
+  .ex-remove-btn:active, .ex-move-btn:active { opacity: 1; }
+  .ex-move-btn:disabled { opacity: .25; cursor: default; }
 
   .row2 { display: flex; align-items: center; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
   .wt-box, .val-box {
@@ -817,7 +818,7 @@
     draft.exercises.forEach((ex, i) => {
       const cardState = isGraded(ex) ? "done" : (i === activeIdx ? "active" : "");
       html += `<div class="ex-card${cardState ? " " + cardState : ""}" data-exidx="${i}">`;
-      html += `<div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span><div class="ex-header-right"><span class="ex-last">${escapeHTML(lastNoteFor(ex.name))}</span><button class="ex-remove-btn" data-remove-ex="1" title="Remove from this session">✕</button></div></div>`;
+      html += `<div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span><div class="ex-header-right"><span class="ex-last">${escapeHTML(lastNoteFor(ex.name))}</span><button class="ex-move-btn" data-sess-move-up="${i}" title="Move up" ${i === 0 ? "disabled" : ""}>↑</button><button class="ex-move-btn" data-sess-move-down="${i}" title="Move down" ${i === draft.exercises.length - 1 ? "disabled" : ""}>↓</button><button class="ex-remove-btn" data-remove-ex="1" title="Remove from this session">✕</button></div></div>`;
       html += `<div class="row2">`;
       if (ex.type === "weighted") {
         html += `<input class="wt-box" type="number" inputmode="decimal" placeholder="wt" data-weight-field="1" value="${escapeHTML(ex.weight)}"><span class="unit">lb</span>`;
@@ -929,6 +930,22 @@
 
     app.querySelectorAll(".ex-card").forEach(card => {
       const i = Number(card.getAttribute("data-exidx"));
+      card.querySelector("[data-sess-move-up]").addEventListener("click", () => {
+        if (i > 0) {
+          const ex = draft.exercises;
+          [ex[i - 1], ex[i]] = [ex[i], ex[i - 1]];
+          saveDraft();
+          render();
+        }
+      });
+      card.querySelector("[data-sess-move-down]").addEventListener("click", () => {
+        const ex = draft.exercises;
+        if (i < ex.length - 1) {
+          [ex[i], ex[i + 1]] = [ex[i + 1], ex[i]];
+          saveDraft();
+          render();
+        }
+      });
       card.querySelector("[data-remove-ex]").addEventListener("click", () => {
         const ex = draft.exercises[i];
         if (!confirm(`Remove "${ex.name}" from this session?`)) return;
