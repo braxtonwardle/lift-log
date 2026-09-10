@@ -162,7 +162,16 @@
   }
   .ex-remove-btn:active, .ex-move-btn:active { opacity: 1; }
   .ex-move-btn:disabled { opacity: .25; cursor: default; }
-  .hist-value { color: var(--ink); font-size: 14px; margin-top: 6px; }
+  .hist-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .hist-box {
+    background: var(--navy); color: var(--ink); font-size: 15px; font-weight: 600;
+    border-radius: 6px; height: 34px; min-width: 34px; padding: 0 8px;
+    display: flex; align-items: center; justify-content: center; user-select: none;
+  }
+  .hist-weight-box { padding: 0 12px; }
+  .hist-bw-label { color: var(--muted); font-size: 12.5px; }
+  .hist-unit { color: var(--muted); font-size: 11px; }
+  .hist-grade-tag { margin-left: auto; color: var(--muted); font-size: 12px; flex: none; }
 
   .row2 { display: flex; align-items: center; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
   .wt-box, .val-box {
@@ -1331,18 +1340,6 @@
   }
 
   // ---------- HISTORY ----------
-  // Same terse "135×8,8,6" shorthand as lastNoteFor(), minus the "next"
-  // adjust-amount note (that's about what happens on the next session, which
-  // has no meaning when looking backward at one that's already logged).
-  function formatLoggedExercise(ex) {
-    const vals = ex.sets.join(",");
-    let str = (ex.type === "weighted" && ex.weight !== "") ? `${ex.weight}×${vals}`
-      : ex.type === "timed" ? `${vals}s`
-      : vals;
-    if (ex.grade) str += " · " + GRADE_LABELS[ex.grade].toLowerCase();
-    return str;
-  }
-
   function renderHistoryList() {
     // sessions is appended to in chronological order, so reversing (rather
     // than sorting by date) puts the most recent first while keeping same-day
@@ -1391,12 +1388,17 @@
       <div class="tiny" style="margin-top:-10px; margin-bottom:14px;">${s.date}</div>
     `;
     s.exercises.forEach(ex => {
-      html += `
-        <div class="ex-card done">
-          <div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span></div>
-          <div class="hist-value">${escapeHTML(formatLoggedExercise(ex))}</div>
-        </div>
-      `;
+      html += `<div class="ex-card done"><div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span></div>`;
+      html += `<div class="hist-row">`;
+      if (ex.type === "weighted") {
+        html += `<span class="hist-box hist-weight-box">${escapeHTML(ex.weight)}</span><span class="hist-unit">lb</span>`;
+      } else if (ex.type === "bodyweight") {
+        html += `<span class="hist-bw-label">Bodyweight</span>`;
+      }
+      ex.sets.forEach(v => { html += `<span class="hist-box">${escapeHTML(v)}</span>`; });
+      if (ex.type === "timed") html += `<span class="hist-unit">sec</span>`;
+      if (ex.grade) html += `<span class="hist-grade-tag">${GRADE_LABELS[ex.grade]}</span>`;
+      html += `</div></div>`;
     });
     app.innerHTML = html;
     document.getElementById("backBtn").addEventListener("click", () => { view = "history"; render(); });
