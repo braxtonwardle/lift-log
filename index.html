@@ -162,6 +162,7 @@
   }
   .ex-remove-btn:active, .ex-move-btn:active { opacity: 1; }
   .ex-move-btn:disabled { opacity: .25; cursor: default; }
+  .hist-value { color: var(--ink); font-size: 14px; margin-top: 6px; }
 
   .row2 { display: flex; align-items: center; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
   .wt-box, .val-box {
@@ -392,11 +393,12 @@
   // last time (e.g. via "Save & go back") — the home card for that workout
   // shows a "resume" state instead, so opening the app never jumps straight
   // past the menu into whatever you were last doing.
-  let view = "home"; // "home" | "builder" | "session" | "bwlog" | "progress" | "chart"
+  let view = "home"; // "home" | "builder" | "session" | "bwlog" | "progress" | "chart" | "history" | "historyDetail"
   let builderState = null; // { id (or null for new), name, exercises:[{id,name,sets}] }
   let sessionAddState = null; // { name, sets, type } while the mid-session "add exercise" form is open, else null
   let chartTarget = null; // exercise name, or BODYWEIGHT_TARGET, for the "chart" view
   const BODYWEIGHT_TARGET = "__bodyweight__";
+  let historyTarget = null; // session id, for the "historyDetail" view
 
   // ---------- rendering ----------
   const app = document.getElementById("app");
@@ -407,6 +409,8 @@
     else if (view === "bwlog") renderBodyweightLog();
     else if (view === "progress") renderProgressList();
     else if (view === "chart") renderChart();
+    else if (view === "history") renderHistoryList();
+    else if (view === "historyDetail") renderHistoryDetail();
   }
 
   function formatBackupStatus(iso) {
@@ -472,8 +476,9 @@
     html += `
       <div class="home-actions-row">
         <button class="add-btn" id="newWorkoutBtn">+ New workout</button>
-        <button class="icon-square-btn" id="bwBtn" title="Body Weight">⚖️</button>
+        <button class="icon-square-btn" id="historyBtn" title="History">🗒️</button>
         <button class="icon-square-btn" id="progressBtn" title="Progress">📈</button>
+        <button class="icon-square-btn" id="bwBtn" title="Body Weight">⚖️</button>
       </div>
     `;
     html += `
@@ -532,6 +537,7 @@
     });
     document.getElementById("bwBtn").addEventListener("click", () => { view = "bwlog"; render(); });
     document.getElementById("newWorkoutBtn").addEventListener("click", () => openBuilder(null));
+    document.getElementById("historyBtn").addEventListener("click", () => { view = "history"; render(); });
     document.getElementById("progressBtn").addEventListener("click", () => { view = "progress"; render(); });
     document.getElementById("exportBtn").addEventListener("click", exportCSV);
     document.getElementById("backupBtn").addEventListener("click", downloadBackup);
@@ -1322,6 +1328,78 @@
         document.getElementById("chartDetail").textContent = pointDetailText(p);
       });
     });
+  }
+
+  // ---------- HISTORY ----------
+  // Same terse "135×8,8,6" shorthand as lastNoteFor(), minus the "next"
+  // adjust-amount note (that's about what happens on the next session, which
+  // has no meaning when looking backward at one that's already logged).
+  function formatLoggedExercise(ex) {
+    const vals = ex.sets.join(",");
+    let str = (ex.type === "weighted" && ex.weight !== "") ? `${ex.weight}×${vals}`
+      : ex.type === "timed" ? `${vals}s`
+      : vals;
+    if (ex.grade) str += " · " + GRADE_LABELS[ex.grade].toLowerCase();
+    return str;
+  }
+
+  function renderHistoryList() {
+    // sessions is appended to in chronological order, so reversing (rather
+    // than sorting by date) puts the most recent first while keeping same-day
+    // sessions in the order they actually happened.
+    const ordered = [...sessions].reverse();
+    let html = `
+      <div class="nav-row">
+        <button class="nav-btn" id="backBtn">‹</button>
+        <div class="nav-title">History</div>
+      </div>
+    `;
+    if (ordered.length === 0) {
+      html += `<div class="empty-state">No workouts logged yet.<br>Finish a workout to start building history.</div>`;
+    } else {
+      ordered.forEach(s => {
+        const count = s.exercises.length;
+        html += `
+          <div class="workout-card" data-hist="${s.id}">
+            <div class="wc-main">
+              <div class="wc-name">${escapeHTML(s.workoutName)}</div>
+              <div class="wc-meta">${s.date} · ${count} exercise${count === 1 ? "" : "s"}</div>
+            </div>
+          </div>
+        `;
+      });
+    }
+    app.innerHTML = html;
+    document.getElementById("backBtn").addEventListener("click", () => { view = "home"; render(); });
+    app.querySelectorAll("[data-hist]").forEach(el => {
+      el.querySelector(".wc-main").addEventListener("click", () => {
+        historyTarget = el.getAttribute("data-hist");
+        view = "historyDetail";
+        render();
+      });
+    });
+  }
+
+  function renderHistoryDetail() {
+    const s = sessions.find(x => x.id === historyTarget);
+    if (!s) { view = "history"; render(); return; }
+    let html = `
+      <div class="nav-row">
+        <button class="nav-btn" id="backBtn">‹</button>
+        <div class="nav-title">${escapeHTML(s.workoutName)}</div>
+      </div>
+      <div class="tiny" style="margin-top:-10px; margin-bottom:14px;">${s.date}</div>
+    `;
+    s.exercises.forEach(ex => {
+      html += `
+        <div class="ex-card done">
+          <div class="ex-header"><span class="ex-name">${escapeHTML(ex.name)}</span></div>
+          <div class="hist-value">${escapeHTML(formatLoggedExercise(ex))}</div>
+        </div>
+      `;
+    });
+    app.innerHTML = html;
+    document.getElementById("backBtn").addEventListener("click", () => { view = "history"; render(); });
   }
 
   // ---------- export / backup ----------
