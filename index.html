@@ -234,6 +234,8 @@
   .chart-point { cursor: pointer; }
   .chart-detail { color: var(--ink); font-size: 12.5px; margin-top: 8px; min-height: 18px; }
   .chart-axis-label { fill: var(--muted2); font-size: 9px; font-family: inherit; }
+  .chart-gridline { stroke: var(--line2); stroke-width: 1; opacity: .6; }
+  .chart-axis-line { stroke: var(--muted2); stroke-width: 1; }
 </style>
 </head>
 <body>
@@ -1241,8 +1243,9 @@
   function estimate1RM(weight, reps) { return weight * (1 + reps / 30); }
 
   function buildChartSVG(points, hasE1RM) {
-    const W = 340, H = 200, padL = 30, padR = 8, padT = 10, padB = 20;
+    const W = 340, H = 200, padL = 36, padR = 8, padT = 10, padB = 20;
     const plotW = W - padL - padR, plotH = H - padT - padB;
+    const plotTop = padT, plotBottom = padT + plotH, plotLeft = padL, plotRight = padL + plotW;
 
     const dateNums = points.map(p => new Date(p.date).getTime());
     const minDate = Math.min(...dateNums), maxDate = Math.max(...dateNums);
@@ -1260,9 +1263,27 @@
     const yPos = (val) => padT + plotH - ((val - minY) / ySpan) * plotH;
 
     let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; display:block;">`;
-    svg += `<text class="chart-axis-label" x="${padL}" y="${padT + 4}">${Math.round(maxY)}</text>`;
-    svg += `<text class="chart-axis-label" x="${padL}" y="${padT + plotH}">${Math.round(minY)}</text>`;
-    svg += `<text class="chart-axis-label" x="${padL}" y="${H - 4}">${escapeHTML(points[0].date.slice(5))}</text>`;
+
+    // Horizontal gridlines + y-axis value labels, evenly spaced across the
+    // (already padded) value range rather than just min/max.
+    const yTicks = 4;
+    for (let i = 0; i <= yTicks; i++) {
+      const val = minY + (ySpan * i) / yTicks;
+      const y = yPos(val);
+      svg += `<line class="chart-gridline" x1="${plotLeft}" y1="${y}" x2="${plotRight}" y2="${y}" />`;
+      svg += `<text class="chart-axis-label" x="${plotLeft - 5}" y="${y + 3}" text-anchor="end">${Math.round(val)}</text>`;
+    }
+    // Vertical gridlines at each logged point's date, so the grid actually
+    // lines up with the data instead of arbitrary evenly-spaced ticks.
+    points.forEach(p => {
+      const x = xPos(p.date);
+      svg += `<line class="chart-gridline" x1="${x}" y1="${plotTop}" x2="${x}" y2="${plotBottom}" />`;
+    });
+    // Solid axis lines on top of the gridlines.
+    svg += `<line class="chart-axis-line" x1="${plotLeft}" y1="${plotTop}" x2="${plotLeft}" y2="${plotBottom}" />`;
+    svg += `<line class="chart-axis-line" x1="${plotLeft}" y1="${plotBottom}" x2="${plotRight}" y2="${plotBottom}" />`;
+
+    svg += `<text class="chart-axis-label" x="${plotLeft}" y="${H - 4}">${escapeHTML(points[0].date.slice(5))}</text>`;
     svg += `<text class="chart-axis-label" x="${W - padR}" y="${H - 4}" text-anchor="end">${escapeHTML(points[points.length - 1].date.slice(5))}</text>`;
 
     if (hasE1RM) {
