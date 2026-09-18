@@ -46,6 +46,11 @@
     font-size: 18px; cursor: pointer; line-height: 1;
   }
   .nav-title { color: var(--ink); font-size: 15.5px; font-weight: 600; flex: 1; }
+  .hist-edit-btn {
+    border: none; background: transparent; color: var(--muted2); font-size: 14px; cursor: pointer;
+    opacity: .55; flex: none; padding: 4px;
+  }
+  .hist-edit-btn:active { opacity: 1; }
 
   .panel { background: var(--panel); border-radius: 10px; padding: 14px 16px; margin-bottom: 10px; }
 
@@ -115,6 +120,7 @@
     background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; color: var(--muted);
     font-size: 16px; padding: 5px 6px; font-family: inherit;
   }
+  .type-group { display: flex; gap: 6px; }
   .remove-row-btn {
     border: none; background: transparent; color: var(--muted2); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0;
   }
@@ -264,6 +270,18 @@
   let bodyweight = loadJSON(BODYWEIGHT_KEY, {}); // { "YYYY-MM-DD": weight }
   let chartOrder = loadJSON(CHART_ORDER_KEY, []); // [exerciseName, ...] user-sorted, newly-seen ones append
 
+  // A history edit-in-progress (marked by editingDate) doesn't survive a real
+  // page reload -- editingSessionId itself is an in-memory-only flag, so a
+  // reloaded edit-draft would otherwise look like a normal resumable live
+  // session and could get "finished" as a brand-new session instead of
+  // updating the one it came from. Editing is already all-or-nothing (no
+  // resume-later, per goBackFromSession/discardDraft), so dropping it here
+  // matches that rather than risking a phantom duplicate session.
+  if (draft && draft.editingDate !== undefined) {
+    draft = null;
+    localStorage.removeItem(DRAFT_KEY);
+  }
+
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 8); }
   function todayKey() {
     const d = new Date(); const off = d.getTimezoneOffset();
@@ -387,6 +405,30 @@
     if (changed) saveJSON(SESSIONS_KEY, sessions);
   }
 
+  // ---------- one-time migration: explicit seconds/minutes on timed exercises ----------
+  // "Timed" exercises used to be seconds-only. Any existing timed exercise
+  // (in workout templates, history, or logged sessions) without a timeUnit
+  // gets "sec" so old data keeps displaying exactly as it always did.
+  function migrateTimeUnit() {
+    let workoutsChanged = false;
+    workouts.forEach(w => w.exercises.forEach(ex => {
+      if (ex.type === "timed" && !ex.timeUnit) { ex.timeUnit = "sec"; workoutsChanged = true; }
+    }));
+    if (workoutsChanged) saveJSON(WORKOUTS_KEY, workouts);
+
+    let historyChanged = false;
+    Object.values(history).forEach(h => {
+      if (h.type === "timed" && !h.timeUnit) { h.timeUnit = "sec"; historyChanged = true; }
+    });
+    if (historyChanged) saveJSON(HISTORY_KEY, history);
+
+    let sessionsChanged = false;
+    sessions.forEach(s => s.exercises.forEach(ex => {
+      if (ex.type === "timed" && !ex.timeUnit) { ex.timeUnit = "sec"; sessionsChanged = true; }
+    }));
+    if (sessionsChanged) saveJSON(SESSIONS_KEY, sessions);
+  }
+
   // Runs at startup and again after a "Restore backup" -- migrations only
   // touch the in-memory workouts/history/sessions variables, so loading an
   // older-format backup after the page has already started needs another
@@ -396,6 +438,7 @@
     migrateSharedWeight();
     migrateNormalization();
     migrateSessionsShape();
+    migrateTimeUnit();
   }
   runMigrations();
 
@@ -410,6 +453,7 @@
   let chartTarget = null; // exercise name, or BODYWEIGHT_TARGET, for the "chart" view
   const BODYWEIGHT_TARGET = "__bodyweight__";
   let historyTarget = null; // session id, for the "historyDetail" view
+  let editingSessionId = null; // session id being edited via the "session" view, or null for a normal live session
 
   // ---------- rendering ----------
   const app = document.getElementById("app");
@@ -638,11 +682,19 @@
             </div>
           </div>
           <div class="builder-row-bottom">
-            <select class="type-select" data-field="type">
-              <option value="weighted" ${!ex.type || ex.type === "weighted" ? "selected" : ""}>Weighted</option>
-              <option value="bodyweight" ${ex.type === "bodyweight" ? "selected" : ""}>Bodyweight</option>
-              <option value="timed" ${ex.type === "timed" ? "selected" : ""}>Timed (seconds)</option>
-            </select>
+            <div class="type-group">
+              <select class="type-select" data-field="type">
+                <option value="weighted" ${!ex.type || ex.type === "weighted" ? "selected" : ""}>Weighted</option>
+                <option value="bodyweight" ${ex.type === "bodyweight" ? "selected" : ""}>Bodyweight</option>
+                <option value="timed" ${ex.type === "timed" ? "selected" : ""}>Timed</option>
+              </select>
+              ${ex.type === "timed" ? `
+                <select class="type-select" data-field="timeUnit">
+                  <option value="sec" ${ex.timeUnit !== "min" ? "selected" : ""}>sec</option>
+                  <option value="min" ${ex.timeUnit === "min" ? "selected" : ""}>min</option>
+                </select>
+              ` : ""}
+            </div>
             <div class="builder-row-actions">
               <button class="icon-btn" data-ex-move-up="${i}" ${i === 0 ? "disabled" : ""}>↑</button>
               <button class="icon-btn" data-ex-move-down="${i}" ${i === builderState.exercises.length - 1 ? "disabled" : ""}>↓</button>
@@ -666,7 +718,12 @@
           const field = input.getAttribute("data-field");
           if (field === "sets") builderState.exercises[idx].sets = Math.max(1, Math.min(10, Number(input.value) || 1));
           else if (field === "targetReps") builderState.exercises[idx].targetReps = input.value === "" ? "" : Math.max(0, Math.min(50, Number(input.value) || 0));
-          else if (field === "type") builderState.exercises[idx].type = input.value;
+          else if (field === "type") {
+            builderState.exercises[idx].type = input.value;
+            if (input.value === "timed" && !builderState.exercises[idx].timeUnit) builderState.exercises[idx].timeUnit = "sec";
+            render();
+          }
+          else if (field === "timeUnit") builderState.exercises[idx].timeUnit = input.value;
           else builderState.exercises[idx].name = input.value;
         });
       });
@@ -753,6 +810,7 @@
     return {
       name: ex.name,
       type,
+      timeUnit: type === "timed" ? (ex.timeUnit || "sec") : undefined,
       targetReps: ex.targetReps,
       weight: (type === "weighted" && h && h.weight) ? nextWeight(h) : "",
       grade: null,
@@ -811,7 +869,7 @@
     if (!h || !h.sets || h.sets.length === 0) return "no history yet";
     const vals = h.sets.join(",");
     let str = (h.type === "weighted" && h.weight !== "") ? `last: ${h.weight}×${vals}`
-      : h.type === "timed" ? `last: ${vals}s`
+      : h.type === "timed" ? `last: ${vals}${h.timeUnit === "min" ? "m" : "s"}`
       : `last: ${vals}`;
     if (h.type === "weighted" && h.grade === 1 && h.adjustAmount) str += ` · +${h.adjustAmount} next`;
     else if (h.type === "weighted" && h.grade === 3 && h.adjustAmount) str += ` · -${h.adjustAmount} next`;
@@ -825,6 +883,9 @@
         <button class="nav-btn" id="backBtn">‹</button>
         <div class="nav-title">${escapeHTML(draft.workoutName)}</div>
       </div>
+    `;
+    if (editingSessionId) html += `<div class="tiny" style="margin-top:-10px; margin-bottom:10px;">Editing ${draft.editingDate}</div>`;
+    html += `
       <div class="session-progress-track"><div class="session-progress-fill" id="sessProgFill"></div></div>
       <div class="session-progress-text" id="sessProgText"></div>
     `;
@@ -840,10 +901,11 @@
       if (ex.type === "weighted") {
         html += `<input class="wt-box" type="number" inputmode="decimal" placeholder="wt" data-weight-field="1" value="${escapeHTML(ex.weight)}"><span class="unit">lb</span>`;
       }
+      const timedLabel = ex.timeUnit === "min" ? "min" : "sec";
       ex.sets.forEach((v, j) => {
-        html += `<input class="val-box" type="number" inputmode="numeric" placeholder="${ex.type === "timed" ? "sec" : "reps"}" data-set-field="1" data-setidx="${j}" value="${escapeHTML(v)}">`;
+        html += `<input class="val-box" type="number" inputmode="numeric" placeholder="${ex.type === "timed" ? timedLabel : "reps"}" data-set-field="1" data-setidx="${j}" value="${escapeHTML(v)}">`;
       });
-      if (ex.type === "timed") html += `<span class="unit">sec</span>`;
+      if (ex.type === "timed") html += `<span class="unit">${timedLabel}</span>`;
       html += `<button class="addset" data-add-set="1">+set</button>`;
       if (ex.sets.length > 0) html += `<button class="remset" data-remove-set="1">−set</button>`;
       html += `<span class="row-spacer"></span>`;
@@ -883,11 +945,19 @@
             </div>
           </div>
           <div class="builder-row-bottom">
-            <select class="type-select" id="addExType">
-              <option value="weighted" ${sessionAddState.type === "weighted" ? "selected" : ""}>Weighted</option>
-              <option value="bodyweight" ${sessionAddState.type === "bodyweight" ? "selected" : ""}>Bodyweight</option>
-              <option value="timed" ${sessionAddState.type === "timed" ? "selected" : ""}>Timed (seconds)</option>
-            </select>
+            <div class="type-group">
+              <select class="type-select" id="addExType">
+                <option value="weighted" ${sessionAddState.type === "weighted" ? "selected" : ""}>Weighted</option>
+                <option value="bodyweight" ${sessionAddState.type === "bodyweight" ? "selected" : ""}>Bodyweight</option>
+                <option value="timed" ${sessionAddState.type === "timed" ? "selected" : ""}>Timed</option>
+              </select>
+              ${sessionAddState.type === "timed" ? `
+                <select class="type-select" id="addExTimeUnit">
+                  <option value="sec" ${sessionAddState.timeUnit !== "min" ? "selected" : ""}>sec</option>
+                  <option value="min" ${sessionAddState.timeUnit === "min" ? "selected" : ""}>min</option>
+                </select>
+              ` : ""}
+            </div>
             <button class="remove-row-btn" id="addExCancelBtn">cancel</button>
           </div>
           <label class="persist-check">
@@ -900,13 +970,13 @@
     } else {
       html += `<button class="ghost-btn" id="sessionAddExBtn" style="margin-bottom:10px;">+ Add exercise</button>`;
     }
-    html += `<button class="primary-btn" id="finishBtn">Finish workout</button>`;
-    html += `<button class="ghost-btn" id="backHomeBtn">Save &amp; go back (resume later)</button>`;
-    html += `<button class="discard-btn" id="discardBtn">Discard this session</button>`;
+    html += `<button class="primary-btn" id="finishBtn">${editingSessionId ? "Save changes" : "Finish workout"}</button>`;
+    if (!editingSessionId) html += `<button class="ghost-btn" id="backHomeBtn">Save &amp; go back (resume later)</button>`;
+    html += `<button class="discard-btn" id="discardBtn">${editingSessionId ? "Discard changes" : "Discard this session"}</button>`;
     app.innerHTML = html;
 
     document.getElementById("backBtn").addEventListener("click", goBackFromSession);
-    document.getElementById("backHomeBtn").addEventListener("click", saveDraftAndGoHome);
+    document.getElementById("backHomeBtn")?.addEventListener("click", saveDraftAndGoHome);
     document.getElementById("finishBtn").addEventListener("click", finishWorkout);
     document.getElementById("discardBtn").addEventListener("click", discardDraft);
     updateSessionProgress();
@@ -916,13 +986,18 @@
       document.getElementById("addExSets").addEventListener("input", e => {
         sessionAddState.sets = Math.max(1, Math.min(10, Number(e.target.value) || 1));
       });
-      document.getElementById("addExType").addEventListener("change", e => { sessionAddState.type = e.target.value; });
+      document.getElementById("addExType").addEventListener("change", e => {
+        sessionAddState.type = e.target.value;
+        if (e.target.value === "timed" && !sessionAddState.timeUnit) sessionAddState.timeUnit = "sec";
+        render();
+      });
+      document.getElementById("addExTimeUnit")?.addEventListener("change", e => { sessionAddState.timeUnit = e.target.value; });
       document.getElementById("addExPersist").addEventListener("change", e => { sessionAddState.persist = e.target.checked; });
       document.getElementById("addExCancelBtn").addEventListener("click", () => { sessionAddState = null; render(); });
       document.getElementById("addExConfirmBtn").addEventListener("click", () => {
         const name = sessionAddState.name.trim();
         if (!name) { alert("Give the exercise a name."); return; }
-        const tmpl = { name, type: sessionAddState.type, targetReps: "", sets: sessionAddState.sets };
+        const tmpl = { name, type: sessionAddState.type, targetReps: "", sets: sessionAddState.sets, timeUnit: sessionAddState.type === "timed" ? (sessionAddState.timeUnit || "sec") : undefined };
         draft.exercises.push(buildSessionExercise(tmpl));
         saveDraft();
         if (sessionAddState.persist) {
@@ -1051,8 +1126,19 @@
   // The plain back arrow is just navigation, not a save -- a draft that was
   // never explicitly saved (e.g. you only opened a workout to look at it)
   // is dropped rather than left behind as a false "in progress."  A draft
-  // that WAS already saved on an earlier visit is left alone.
+  // that WAS already saved on an earlier visit is left alone. Editing a past
+  // session is all-or-nothing (no "resume later" for it), so back always
+  // abandons unsaved edits and returns to that session's history detail.
   function goBackFromSession() {
+    if (editingSessionId) {
+      draft = null;
+      localStorage.removeItem(DRAFT_KEY);
+      sessionAddState = null;
+      editingSessionId = null;
+      view = "historyDetail";
+      render();
+      return;
+    }
     if (draft && !draft.saved) {
       draft = null;
       localStorage.removeItem(DRAFT_KEY);
@@ -1063,24 +1149,81 @@
   }
 
   function discardDraft() {
-    if (!confirm("Discard this session? Anything entered here will be lost — history from past finished workouts is unaffected.")) return;
+    const msg = editingSessionId
+      ? "Discard these edits? The logged session will stay exactly as it was."
+      : "Discard this session? Anything entered here will be lost — history from past finished workouts is unaffected.";
+    if (!confirm(msg)) return;
     draft = null;
     localStorage.removeItem(DRAFT_KEY);
     sessionAddState = null;
-    view = "home";
+    const wasEditing = editingSessionId;
+    editingSessionId = null;
+    view = wasEditing ? "historyDetail" : "home";
     render();
   }
 
+  // Rebuilds history[name] (the "last time" prefill data) from the actual
+  // sessions log for each given name, picking whichever session is
+  // chronologically latest (ties broken by array/push order). Needed after
+  // editing a past session -- finishing a *new* session can just assume it's
+  // the latest, but an edit might touch an exercise that a more recent
+  // session also logged, so history has to be recomputed rather than
+  // overwritten outright.
+  function recomputeHistoryFor(names) {
+    names.forEach(norm => {
+      let latest = null;
+      sessions.forEach(s => {
+        const ex = s.exercises.find(e => normName(e.name) === norm);
+        if (!ex) return;
+        if (!latest || s.date >= latest.date) latest = { ex, date: s.date };
+      });
+      if (latest) {
+        history[norm] = {
+          type: latest.ex.type, weight: latest.ex.weight, sets: latest.ex.sets,
+          grade: latest.ex.grade, adjustAmount: latest.ex.adjustAmount,
+          timeUnit: latest.ex.timeUnit, date: latest.date,
+        };
+      } else {
+        delete history[norm];
+      }
+    });
+    saveJSON(HISTORY_KEY, history);
+  }
+
   function finishWorkout() {
-    const date = todayKey();
+    const date = editingSessionId ? draft.editingDate : todayKey();
     const loggedExercises = [];
     draft.exercises.forEach(ex => {
       const sets = ex.sets.filter(v => v !== "").map(v => Number(v));
       if (sets.length === 0) return; // left blank (e.g. skipped this time) — don't touch history
       const weight = ex.type === "weighted" ? ex.weight : "";
       const adjustAmount = ex.type === "weighted" ? ex.adjustAmount : null;
-      history[normName(ex.name)] = { type: ex.type, weight, sets, grade: ex.grade, adjustAmount, date };
-      loggedExercises.push({ name: ex.name, type: ex.type, weight, sets, grade: ex.grade, adjustAmount });
+      const timeUnit = ex.type === "timed" ? (ex.timeUnit || "sec") : undefined;
+      loggedExercises.push({ name: ex.name, type: ex.type, weight, sets, grade: ex.grade, adjustAmount, timeUnit });
+    });
+
+    if (editingSessionId) {
+      const touched = new Set(draft.exercises.map(ex => normName(ex.name)));
+      const orig = sessions.find(x => x.id === editingSessionId);
+      if (orig) orig.exercises.forEach(ex => touched.add(normName(ex.name)));
+      const idx = sessions.findIndex(x => x.id === editingSessionId);
+      if (idx !== -1) {
+        if (loggedExercises.length === 0) sessions.splice(idx, 1);
+        else sessions[idx] = { ...sessions[idx], exercises: loggedExercises };
+        saveJSON(SESSIONS_KEY, sessions);
+      }
+      recomputeHistoryFor([...touched]);
+      draft = null;
+      localStorage.removeItem(DRAFT_KEY);
+      sessionAddState = null;
+      editingSessionId = null;
+      view = "historyDetail";
+      render();
+      return;
+    }
+
+    loggedExercises.forEach(ex => {
+      history[normName(ex.name)] = { type: ex.type, weight: ex.weight, sets: ex.sets, grade: ex.grade, adjustAmount: ex.adjustAmount, timeUnit: ex.timeUnit, date };
     });
     saveJSON(HISTORY_KEY, history);
 
@@ -1227,7 +1370,7 @@
     sessions.forEach(s => {
       const ex = s.exercises.find(e => normName(e.name) === norm);
       if (!ex || !ex.sets || ex.sets.length === 0) return;
-      points.push({ date: s.date, type: ex.type, weight: ex.weight, sets: ex.sets });
+      points.push({ date: s.date, type: ex.type, weight: ex.weight, sets: ex.sets, timeUnit: ex.timeUnit });
     });
     points.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
     return points;
@@ -1335,7 +1478,8 @@
             e1rm: (reps && reps <= 12) ? Math.round(estimate1RM(Number(p.weight), reps)) : null,
           };
         }
-        return { date: p.date, y: p.sets[0], label: p.type === "timed" ? `${p.sets.join(",")}s` : p.sets.join(","), e1rm: null };
+        const timeSuffix = p.timeUnit === "min" ? "m" : "s";
+        return { date: p.date, y: p.sets[0], label: p.type === "timed" ? `${p.sets.join(",")}${timeSuffix}` : p.sets.join(","), e1rm: null };
       });
     }
 
@@ -1398,6 +1542,38 @@
     });
   }
 
+  // Drops a past session into the same "session" view used for an active
+  // workout -- edit weight/reps/grade, add/remove/reorder exercises, all the
+  // same controls. Refuses to start if a real live workout draft already
+  // exists, since both would otherwise fight over the single `draft` slot
+  // and the live one would silently lose its unsaved state.
+  function editHistorySession(id) {
+    if (draft) { alert("Finish or discard your current workout before editing history."); return; }
+    const s = sessions.find(x => x.id === id);
+    if (!s) return;
+    editingSessionId = s.id;
+    sessionAddState = null;
+    draft = {
+      workoutId: s.workoutId,
+      workoutName: s.workoutName,
+      saved: true,
+      editingDate: s.date,
+      exercises: s.exercises.map(ex => ({
+        name: ex.name,
+        type: ex.type,
+        timeUnit: ex.timeUnit,
+        targetReps: "",
+        weight: (ex.weight !== undefined && ex.weight !== null) ? String(ex.weight) : "",
+        grade: (ex.grade !== undefined) ? ex.grade : null,
+        adjustAmount: ex.adjustAmount || null,
+        sets: ex.sets.map(v => String(v)),
+      })),
+    };
+    saveDraft();
+    view = "session";
+    render();
+  }
+
   function renderHistoryDetail() {
     const s = sessions.find(x => x.id === historyTarget);
     if (!s) { view = "history"; render(); return; }
@@ -1405,6 +1581,7 @@
       <div class="nav-row">
         <button class="nav-btn" id="backBtn">‹</button>
         <div class="nav-title">${escapeHTML(s.workoutName)}</div>
+        <button class="hist-edit-btn" id="editHistBtn" title="Edit this workout">✎</button>
       </div>
       <div class="tiny" style="margin-top:-10px; margin-bottom:14px;">${s.date}</div>
     `;
@@ -1417,12 +1594,13 @@
         html += `<span class="hist-bw-label">Bodyweight</span>`;
       }
       ex.sets.forEach(v => { html += `<span class="hist-box">${escapeHTML(v)}</span>`; });
-      if (ex.type === "timed") html += `<span class="hist-unit">sec</span>`;
+      if (ex.type === "timed") html += `<span class="hist-unit">${ex.timeUnit === "min" ? "min" : "sec"}</span>`;
       if (ex.grade) html += `<span class="hist-grade-tag">${GRADE_LABELS[ex.grade]}</span>`;
       html += `</div></div>`;
     });
     app.innerHTML = html;
     document.getElementById("backBtn").addEventListener("click", () => { view = "history"; render(); });
+    document.getElementById("editHistBtn").addEventListener("click", () => editHistorySession(s.id));
   }
 
   // ---------- export / backup ----------
