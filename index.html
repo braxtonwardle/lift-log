@@ -115,6 +115,8 @@
   .ac-item:active { background: var(--bg); }
   .sets-field { flex: none; width: 64px; }
   .mini-label { color: var(--muted); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; margin-bottom: 4px; display: block; }
+  .edit-date-row { margin-bottom: 14px; }
+  .edit-date-row input { max-width: 160px; }
   .sets-input { width: 64px; flex: none; text-align: center; }
   .type-select {
     background: var(--bg); border: 1px solid var(--line2); border-radius: 6px; color: var(--muted);
@@ -884,7 +886,14 @@
         <div class="nav-title">${escapeHTML(draft.workoutName)}</div>
       </div>
     `;
-    if (editingSessionId) html += `<div class="tiny" style="margin-top:-10px; margin-bottom:10px;">Editing ${draft.editingDate}</div>`;
+    if (editingSessionId) {
+      html += `
+        <div class="edit-date-row">
+          <span class="mini-label">Date</span>
+          <input class="text-input" id="editDateInput" type="date" value="${escapeHTML(draft.editingDate)}">
+        </div>
+      `;
+    }
     html += `
       <div class="session-progress-track"><div class="session-progress-fill" id="sessProgFill"></div></div>
       <div class="session-progress-text" id="sessProgText"></div>
@@ -979,6 +988,10 @@
     document.getElementById("backHomeBtn")?.addEventListener("click", saveDraftAndGoHome);
     document.getElementById("finishBtn").addEventListener("click", finishWorkout);
     document.getElementById("discardBtn").addEventListener("click", discardDraft);
+    document.getElementById("editDateInput")?.addEventListener("change", e => {
+      draft.editingDate = e.target.value;
+      saveDraft();
+    });
     updateSessionProgress();
 
     if (sessionAddState) {
@@ -1191,6 +1204,7 @@
   }
 
   function finishWorkout() {
+    if (editingSessionId && !draft.editingDate) { alert("Pick a valid date."); return; }
     const date = editingSessionId ? draft.editingDate : todayKey();
     const loggedExercises = [];
     draft.exercises.forEach(ex => {
@@ -1209,7 +1223,7 @@
       const idx = sessions.findIndex(x => x.id === editingSessionId);
       if (idx !== -1) {
         if (loggedExercises.length === 0) sessions.splice(idx, 1);
-        else sessions[idx] = { ...sessions[idx], exercises: loggedExercises };
+        else sessions[idx] = { ...sessions[idx], date, exercises: loggedExercises };
         saveJSON(SESSIONS_KEY, sessions);
       }
       recomputeHistoryFor([...touched]);
@@ -1506,10 +1520,12 @@
 
   // ---------- HISTORY ----------
   function renderHistoryList() {
-    // sessions is appended to in chronological order, so reversing (rather
-    // than sorting by date) puts the most recent first while keeping same-day
-    // sessions in the order they actually happened.
-    const ordered = [...sessions].reverse();
+    // Sessions can have their date edited after the fact (see
+    // editHistorySession), so push order alone can no longer be trusted for
+    // "most recent first" -- sort by date descending. Reversing first, then
+    // using a stable sort, keeps same-date sessions in most-recently-logged
+    // order, same tie-break as before this could happen.
+    const ordered = [...sessions].reverse().sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
     let html = `
       <div class="nav-row">
         <button class="nav-btn" id="backBtn">‹</button>
