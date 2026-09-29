@@ -1399,7 +1399,23 @@
   // line, since it's an estimate that gets unreliable above ~12 reps.
   function estimate1RM(weight, reps) { return weight * (1 + reps / 30); }
 
-  function buildChartSVG(points, hasE1RM) {
+  // Rounds a rough tick spacing up to a "clean" step. allowSmall widens the
+  // candidate set to 1/2/5/10 (down to fractional steps for sub-1 ranges) --
+  // used for the zoomed-in bodyweight chart, where week-to-week change is
+  // often a pound or two and a 5/10-only step would flatten it. Without it,
+  // only 5/10-family steps are used (weight/rep exercise charts), matching
+  // the "no odd numbers like 72 or 87" ask those were built for.
+  function niceAxisStep(roughStep, allowSmall) {
+    if (roughStep <= 0) return allowSmall ? 1 : 5;
+    const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
+    const residual = roughStep / magnitude;
+    let niceResidual;
+    if (allowSmall) niceResidual = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
+    else niceResidual = residual <= 5 ? 5 : 10;
+    return niceResidual * magnitude;
+  }
+
+  function buildChartSVG(points, hasE1RM, zeroBaseline) {
     const W = 340, H = 200, padL = 36, padR = 8, padT = 10, padB = 20;
     const plotW = W - padL - padR, plotH = H - padT - padB;
     const plotTop = padT, plotBottom = padT + plotH, plotLeft = padL, plotRight = padL + plotW;
@@ -1408,24 +1424,35 @@
     const minDate = Math.min(...dateNums), maxDate = Math.max(...dateNums);
     const dateSpan = maxDate - minDate || 1;
 
-    // Fixed 0 baseline, top rounded up to a clean multiple of 5 or 10 (never
-    // an odd number like 72 or 87) -- the scale stays a stable, easy-to-read
-    // grid rather than stretching to whatever the data's own min/max happen
-    // to be, even if that means the line zigzags more inside it.
     const yVals = points.map(p => p.y);
     if (hasE1RM) points.forEach(p => { if (p.e1rm) yVals.push(p.e1rm); });
-    const rawMax = Math.max(0, ...yVals);
-    const yTicks = 4;
-    function niceAxisStep(roughStep) {
-      if (roughStep <= 0) return 5;
-      const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
-      const residual = roughStep / magnitude;
-      return (residual <= 5 ? 5 : 10) * magnitude;
+    const targetTicks = 4;
+
+    // zeroBaseline: fixed 0 start, top rounded up to a clean 5/10-family
+    // step -- a stable scale that doesn't stretch to the data, even if the
+    // line zigzags more inside it. Otherwise (bodyweight): zoom to the
+    // data's own min/max, rounded outward to a clean (possibly fractional)
+    // step, so small real changes are actually visible instead of flattened
+    // against a wide fixed range.
+    let minY, maxY, yStep;
+    if (zeroBaseline) {
+      const rawMax = Math.max(0, ...yVals);
+      yStep = niceAxisStep(rawMax / targetTicks, false);
+      minY = 0;
+      maxY = yStep * targetTicks;
+    } else {
+      const dataMin = Math.min(...yVals), dataMax = Math.max(...yVals);
+      // Floor the span at 1 -- a single data point (or several identical
+      // values) would otherwise derive a microscopic step from a near-zero
+      // span, producing gridlines so close together their rounded labels
+      // collide (e.g. two lines both showing "181.0").
+      yStep = niceAxisStep(Math.max(dataMax - dataMin, 1) / targetTicks, true);
+      minY = Math.floor(dataMin / yStep) * yStep;
+      maxY = Math.ceil(dataMax / yStep) * yStep;
+      if (maxY <= minY) maxY = minY + yStep;
     }
-    const yStep = niceAxisStep(rawMax / yTicks);
-    const minY = 0;
-    const maxY = yStep * yTicks;
     const ySpan = maxY - minY || 1;
+    const numTicks = Math.round((maxY - minY) / yStep);
 
     const xPos = (date) => padL + ((new Date(date).getTime() - minDate) / dateSpan) * plotW;
     const yPos = (val) => padT + plotH - ((val - minY) / ySpan) * plotH;
@@ -1433,11 +1460,12 @@
     let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; display:block;">`;
 
     // Horizontal gridlines + y-axis value labels at each clean step.
-    for (let i = 0; i <= yTicks; i++) {
+    for (let i = 0; i <= numTicks; i++) {
       const val = minY + yStep * i;
       const y = yPos(val);
+      const label = Number.isInteger(yStep) ? String(Math.round(val)) : val.toFixed(1);
       svg += `<line class="chart-gridline" x1="${plotLeft}" y1="${y}" x2="${plotRight}" y2="${y}" />`;
-      svg += `<text class="chart-axis-label" x="${plotLeft - 5}" y="${y + 3}" text-anchor="end">${Math.round(val)}</text>`;
+      svg += `<text class="chart-axis-label" x="${plotLeft - 5}" y="${y + 3}" text-anchor="end">${label}</text>`;
     }
     // Vertical gridlines at each logged point's date, so the grid actually
     // lines up with the data instead of arbitrary evenly-spaced ticks.
@@ -1513,7 +1541,7 @@
       return;
     }
 
-    html += buildChartSVG(points, hasE1RM);
+    html += buildChartSVG(points, hasE1RM, !isBW);
     const lastPoint = points[points.length - 1];
     html += `<div class="chart-detail" id="chartDetail">${escapeHTML(pointDetailText(lastPoint))}</div>`;
 
