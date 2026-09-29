@@ -244,6 +244,7 @@
   .chart-axis-label { fill: var(--muted2); font-size: 9px; font-family: inherit; }
   .chart-gridline { stroke: var(--line2); stroke-width: 1; opacity: .6; }
   .chart-axis-line { stroke: var(--muted2); stroke-width: 1; }
+  .chart-break-mark { fill: none; stroke: var(--muted2); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
 </style>
 </head>
 <body>
@@ -1399,24 +1400,20 @@
   // line, since it's an estimate that gets unreliable above ~12 reps.
   function estimate1RM(weight, reps) { return weight * (1 + reps / 30); }
 
-  // Rounds a rough tick spacing up to a "clean" step. allowSmall widens the
-  // candidate set to 1/2/5/10 (down to fractional steps for sub-1 ranges) --
-  // used for the zoomed-in bodyweight chart, where week-to-week change is
-  // often a pound or two and a 5/10-only step would flatten it. Without it,
-  // only 5/10-family steps are used (weight/rep exercise charts), matching
-  // the "no odd numbers like 72 or 87" ask those were built for.
-  function niceAxisStep(roughStep, allowSmall) {
-    if (roughStep <= 0) return allowSmall ? 1 : 5;
+  // Rounds a rough tick spacing up to a clean step of 5 or 10 (scaled by a
+  // power of ten: 5, 10, 50, 100, 500...), floored at 5 -- never a fractional
+  // or 1/2-family step, so gridline labels are always plain 5s and 10s.
+  function niceAxisStep(roughStep) {
+    if (roughStep <= 5) return 5;
     const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
     const residual = roughStep / magnitude;
-    let niceResidual;
-    if (allowSmall) niceResidual = residual <= 1 ? 1 : residual <= 2 ? 2 : residual <= 5 ? 5 : 10;
-    else niceResidual = residual <= 5 ? 5 : 10;
-    return niceResidual * magnitude;
+    return (residual <= 5 ? 5 : 10) * magnitude;
   }
 
-  function buildChartSVG(points, hasE1RM, zeroBaseline) {
-    const W = 340, H = 200, padL = 36, padR = 8, padT = 10, padB = 20;
+  function buildChartSVG(points, hasE1RM) {
+    // Extra bottom margin (vs. a plain axis) reserves room for the "0" label
+    // and break mark below the zoomed-in plot area, when there is one.
+    const W = 340, H = 214, padL = 36, padR = 8, padT = 10, padB = 34;
     const plotW = W - padL - padR, plotH = H - padT - padB;
     const plotTop = padT, plotBottom = padT + plotH, plotLeft = padL, plotRight = padL + plotW;
 
@@ -1424,35 +1421,27 @@
     const minDate = Math.min(...dateNums), maxDate = Math.max(...dateNums);
     const dateSpan = maxDate - minDate || 1;
 
+    // Always anchored at 0 in principle, but zoomed to a tight window around
+    // the actual data (rounded outward to a clean 5/10 step) rather than
+    // spanning the full 0..max range -- otherwise a small real change (a
+    // couple pounds of bodyweight, a few lb on a lift) flattens to a nearly
+    // invisible line. When the zoomed window doesn't start at 0, a break
+    // mark plus a "0" label below it make clear the axis is compressed
+    // rather than pretending the visible range starts at true zero.
     const yVals = points.map(p => p.y);
     if (hasE1RM) points.forEach(p => { if (p.e1rm) yVals.push(p.e1rm); });
+    const dataMin = Math.min(...yVals), dataMax = Math.max(...yVals);
     const targetTicks = 4;
-
-    // zeroBaseline: fixed 0 start, top rounded up to a clean 5/10-family
-    // step -- a stable scale that doesn't stretch to the data, even if the
-    // line zigzags more inside it. Otherwise (bodyweight): zoom to the
-    // data's own min/max, rounded outward to a clean (possibly fractional)
-    // step, so small real changes are actually visible instead of flattened
-    // against a wide fixed range.
-    let minY, maxY, yStep;
-    if (zeroBaseline) {
-      const rawMax = Math.max(0, ...yVals);
-      yStep = niceAxisStep(rawMax / targetTicks, false);
-      minY = 0;
-      maxY = yStep * targetTicks;
-    } else {
-      const dataMin = Math.min(...yVals), dataMax = Math.max(...yVals);
-      // Floor the span at 1 -- a single data point (or several identical
-      // values) would otherwise derive a microscopic step from a near-zero
-      // span, producing gridlines so close together their rounded labels
-      // collide (e.g. two lines both showing "181.0").
-      yStep = niceAxisStep(Math.max(dataMax - dataMin, 1) / targetTicks, true);
-      minY = Math.floor(dataMin / yStep) * yStep;
-      maxY = Math.ceil(dataMax / yStep) * yStep;
-      if (maxY <= minY) maxY = minY + yStep;
-    }
+    // Floor the span at 1 -- a single point (or identical values) would
+    // otherwise derive a near-zero step, producing gridlines so close
+    // their rounded labels collide.
+    const yStep = niceAxisStep(Math.max(dataMax - dataMin, 1) / targetTicks);
+    const minY = Math.max(0, Math.floor(dataMin / yStep) * yStep);
+    let maxY = Math.ceil(dataMax / yStep) * yStep;
+    if (maxY <= minY) maxY = minY + yStep;
     const ySpan = maxY - minY || 1;
     const numTicks = Math.round((maxY - minY) / yStep);
+    const hasBreak = minY > 0;
 
     const xPos = (date) => padL + ((new Date(date).getTime() - minDate) / dateSpan) * plotW;
     const yPos = (val) => padT + plotH - ((val - minY) / ySpan) * plotH;
@@ -1463,9 +1452,8 @@
     for (let i = 0; i <= numTicks; i++) {
       const val = minY + yStep * i;
       const y = yPos(val);
-      const label = Number.isInteger(yStep) ? String(Math.round(val)) : val.toFixed(1);
       svg += `<line class="chart-gridline" x1="${plotLeft}" y1="${y}" x2="${plotRight}" y2="${y}" />`;
-      svg += `<text class="chart-axis-label" x="${plotLeft - 5}" y="${y + 3}" text-anchor="end">${label}</text>`;
+      svg += `<text class="chart-axis-label" x="${plotLeft - 5}" y="${y + 3}" text-anchor="end">${Math.round(val)}</text>`;
     }
     // Vertical gridlines at each logged point's date, so the grid actually
     // lines up with the data instead of arbitrary evenly-spaced ticks.
@@ -1476,6 +1464,14 @@
     // Solid axis lines on top of the gridlines.
     svg += `<line class="chart-axis-line" x1="${plotLeft}" y1="${plotTop}" x2="${plotLeft}" y2="${plotBottom}" />`;
     svg += `<line class="chart-axis-line" x1="${plotLeft}" y1="${plotBottom}" x2="${plotRight}" y2="${plotBottom}" />`;
+
+    // Break mark + "0" label below the zoomed-in plot area, showing the
+    // axis is anchored at zero but the scale above it is compressed.
+    if (hasBreak) {
+      const bx = plotLeft, by = plotBottom + 7;
+      svg += `<polyline class="chart-break-mark" points="${bx - 5},${by - 3} ${bx - 1},${by + 3} ${bx + 3},${by - 3} ${bx + 7},${by + 3}" />`;
+      svg += `<text class="chart-axis-label" x="${plotLeft - 5}" y="${plotBottom + 19}" text-anchor="end">0</text>`;
+    }
 
     svg += `<text class="chart-axis-label" x="${plotLeft}" y="${H - 4}">${escapeHTML(points[0].date.slice(5))}</text>`;
     svg += `<text class="chart-axis-label" x="${W - padR}" y="${H - 4}" text-anchor="end">${escapeHTML(points[points.length - 1].date.slice(5))}</text>`;
@@ -1541,7 +1537,7 @@
       return;
     }
 
-    html += buildChartSVG(points, hasE1RM, !isBW);
+    html += buildChartSVG(points, hasE1RM);
     const lastPoint = points[points.length - 1];
     html += `<div class="chart-detail" id="chartDetail">${escapeHTML(pointDetailText(lastPoint))}</div>`;
 
