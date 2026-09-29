@@ -1408,12 +1408,23 @@
     const minDate = Math.min(...dateNums), maxDate = Math.max(...dateNums);
     const dateSpan = maxDate - minDate || 1;
 
+    // Fixed 0 baseline, top rounded up to a clean multiple of 5 or 10 (never
+    // an odd number like 72 or 87) -- the scale stays a stable, easy-to-read
+    // grid rather than stretching to whatever the data's own min/max happen
+    // to be, even if that means the line zigzags more inside it.
     const yVals = points.map(p => p.y);
     if (hasE1RM) points.forEach(p => { if (p.e1rm) yVals.push(p.e1rm); });
-    let minY = Math.min(...yVals), maxY = Math.max(...yVals);
-    if (minY === maxY) { minY -= 1; maxY += 1; }
-    const yPad = (maxY - minY) * 0.12;
-    minY -= yPad; maxY += yPad;
+    const rawMax = Math.max(0, ...yVals);
+    const yTicks = 4;
+    function niceAxisStep(roughStep) {
+      if (roughStep <= 0) return 5;
+      const magnitude = Math.pow(10, Math.floor(Math.log10(roughStep)));
+      const residual = roughStep / magnitude;
+      return (residual <= 5 ? 5 : 10) * magnitude;
+    }
+    const yStep = niceAxisStep(rawMax / yTicks);
+    const minY = 0;
+    const maxY = yStep * yTicks;
     const ySpan = maxY - minY || 1;
 
     const xPos = (date) => padL + ((new Date(date).getTime() - minDate) / dateSpan) * plotW;
@@ -1421,11 +1432,9 @@
 
     let svg = `<svg viewBox="0 0 ${W} ${H}" style="width:100%; height:auto; display:block;">`;
 
-    // Horizontal gridlines + y-axis value labels, evenly spaced across the
-    // (already padded) value range rather than just min/max.
-    const yTicks = 4;
+    // Horizontal gridlines + y-axis value labels at each clean step.
     for (let i = 0; i <= yTicks; i++) {
-      const val = minY + (ySpan * i) / yTicks;
+      const val = minY + yStep * i;
       const y = yPos(val);
       svg += `<line class="chart-gridline" x1="${plotLeft}" y1="${y}" x2="${plotRight}" y2="${y}" />`;
       svg += `<text class="chart-axis-label" x="${plotLeft - 5}" y="${y + 3}" text-anchor="end">${Math.round(val)}</text>`;
